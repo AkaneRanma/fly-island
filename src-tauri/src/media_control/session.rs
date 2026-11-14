@@ -116,20 +116,46 @@ pub(super) fn session_by_id(
     Ok(None)
 }
 
+/// Whether this app plays music rather than video. The music page follows a music player even
+/// when a browser tab keeps a stream or a video playing, which Windows otherwise reports as the
+/// current session; browsers are absent on purpose, so a player in a tab still falls back to
+/// the order below.
+fn plays_music(app_id: &str) -> bool {
+    let id = app_id.to_ascii_lowercase();
+    [
+        "salt player", "spotify", "cloudmusic", "netease", "qqmusic", "kugou", "kuwo", "migu",
+        "foobar", "aimp", "winamp", "musicbee", "tidal", "deezer", "apple.music", "applemusic",
+        "music.ui", "groove",
+    ]
+    .iter()
+    .any(|needle| id.contains(needle))
+}
+
+/// Which of the playing sessions the music page should follow, as an index into `playing`
+/// (app ids in session order): the current session when it plays music, else any music player,
+/// else the current session, else the first one — the order this always used, with the music
+/// player moved ahead of a browser that is playing a video or a stream.
+fn pick_playing(current: Option<&str>, playing: &[String]) -> Option<usize> {
+    let is_music = |index: usize| playing.get(index).is_some_and(|id| plays_music(id));
+    let is_current = |index: usize| Some(playing[index].as_str()) == current;
+
+    let in_order = |predicate: &dyn Fn(usize) -> bool| (0..playing.len()).find(|&index| predicate(index));
+
+    in_order(&|index| is_current(index) && is_music(index))
+        .or_else(|| in_order(&is_music))
+        .or_else(|| in_order(&is_current))
+        .or_else(|| in_order(&|_| true))
+}
+
 pub(super) fn target_session(
     manager: &MediaSessionManager,
 ) -> Result<Option<MediaSession>, String> {
     let current_session = manager.GetCurrentSession().ok();
-
-    if current_session.as_ref().is_some_and(is_playing) {
-        return Ok(current_session);
-    }
-
     let sessions = manager
         .GetSessions()
         .map_err(|error| media_error("Failed to enumerate Windows media sessions", error))?;
-    let mut first_session = None;
 
+    let mut seen: Vec<(String, MediaSession)> = Vec::new();
     for index in 0..sessions
         .Size()
         .map_err(|error| media_error("Failed to count Windows media sessions", error))?
@@ -137,17 +163,29 @@ pub(super) fn target_session(
         let session = sessions
             .GetAt(index)
             .map_err(|error| media_error("Failed to read a Windows media session", error))?;
-
-        if first_session.is_none() {
-            first_session = Some(session.clone());
+        let Some(id) = session_id(&session) else { continue; };
+        if seen.iter().any(|(known, _)| *known == id) {
+            continue;
         }
+        seen.push((id, session));
+    }
 
-        if is_playing(&session) {
-            return Ok(Some(session));
+    let playing: Vec<(String, MediaSession)> = seen
+        .iter()
+        .filter(|(_, session)| is_playing(session))
+        .map(|(id, session)| (id.clone(), session.clone()))
+        .collect();
+    let playing_ids: Vec<String> = playing.iter().map(|(id, _)| id.clone()).collect();
+    let current_playing = current_session.as_ref().filter(|session| is_playing(session));
+    let current_id = current_playing.and_then(session_id);
+
+    if let Some(index) = pick_playing(current_id.as_deref(), &playing_ids) {
+        if let Some((_, session)) = playing.get(index) {
+            return Ok(Some(session.clone()));
         }
     }
 
-    Ok(current_session.or(first_session))
+    Ok(current_session.or_else(|| seen.first().map(|(_, session)| session.clone())))
 }
 
 pub(super) fn list_sessions(manager: &MediaSessionManager) -> Vec<MediaSessionInfo> {
@@ -627,6 +665,8 @@ pub(super) fn friendly_app_label(id: &str) -> String {
         ("kuwo", "Kuwo"),
         ("potplayer", "PotPlayer"),
         ("winamp", "Winamp"),
+        ("salt player", "Salt Player"),
+        ("musicbee", "MusicBee"),
         ("zune", "Groove"),
         ("groove", "Groove"),
     ];
@@ -686,6 +726,17 @@ mod tests {
         assert!(!thumbnail_is_fresh(&entry(None, 0, 0), "app|song|artist", 60_000), "a missing cover keeps being retried");
         assert!(!thumbnail_is_fresh(&entry(Some("x"), 0, 2_000), "app|song|artist", 3_000), "a new track's cover settles for a few seconds");
         assert!(thumbnail_is_fresh(&entry(Some("x"), 0, 5_000), "app|song|artist", 60_000), "a settled cover is reused");
+    }
+
+    #[test]
+    fn a_stream_in_a_browser_leaves_the_music_page_to_the_music_player() {
+        let ids = |list: &[&str]| list.iter().map(|id| id.to_string()).collect::<Vec<_>>();
+        let browser_then_player = ids(&["Chrome", "Salt Player for Windows.exe"]);
+        assert_eq!(super::pick_playing(Some("Chrome"), &browser_then_player), Some(1), "a stream does not win over a player");
+        assert_eq!(super::pick_playing(None, &browser_then_player), Some(1));
+        assert_eq!(super::pick_playing(Some("Chrome"), &ids(&["Chrome"])), Some(0), "a lone browser is still followed");
+        assert_eq!(super::pick_playing(Some("Spotify.exe"), &ids(&["Spotify.exe", "aimp.exe"])), Some(0), "the current player stays");
+        assert_eq!(super::pick_playing(None, &ids(&[])), None);
     }
 
     #[test]
