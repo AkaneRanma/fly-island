@@ -285,7 +285,8 @@ pub async fn list_agent_sessions(
 
 /// Brings the editor or terminal window of an agent session to the front: the window of the
 /// session's own process chain when it is running, else one matched by folder (`cwd`) and title.
-/// In Orca, also switches to the session's terminal tab. Returns false when no window matched.
+/// In Orca, also switches to the session's terminal tab; for DSH, opens the web page it serves when
+/// no desktop window is open. Returns false when neither a window nor a page was opened.
 /// `session_id` is optional so older callers keep working.
 #[tauri::command]
 pub async fn focus_agent_window(

@@ -66,7 +66,9 @@ DSH 官方账户采用充值与赠送钱包；没有查到本地持久化的余�
 
 点击会话根据进程完整路径的 exe 名和只读 Electron 包 repository 优先聚焦所属程序；共享/无法判断归属时取 DSH 主窗口 Z-order 最前者（作为最近使用的近似，没有长期激活历史）。不依赖窗口标题。同名社区包无法识别时保留通用标签。托盘隐藏进程仍判定存活，Windows 阻止前台切换时闪烁提示。
 
-官方 dsh://open 仅打开主窗；DataElement dsh-desktop://、NEXT dsh-app:// 为内部资源协议，未找到选中社区版本可稳定调用的外部指定会话路由。因此本次只聚焦主窗，不能切换具体对话；无可用窗口时返回现有未找到反馈，不调用系统默认协议，避免误开另一安装。
+官方 dsh://open 仅打开主窗；DataElement dsh-desktop://、NEXT dsh-app:// 为内部资源协议，未找到选中社区版本可稳定调用的外部指定会话路由。因此只聚焦主窗，不能切换具体对话，也不调用这些协议，避免误开另一安装。
+
+桌面窗口不存在时会改用 Web 兜底（本 fork 新增）：DSH 以 Web 宿主方式运行时，启动脚本把自己的地址写在所属目录的 `web/url.txt`（带登录 token）和 `web/plain-url.txt` 里；点击会话在找不到窗口后读取这两个文件，取最新的一个、只接受回环地址（`http://127.0.0.1`、`localhost`、`[::1]`，必须带端口），先用 150 ms TCP 探测确认该端口仍在监听，再用默认浏览器打开。地址只读不写日志（`agent-focus.log` 只记 `web=opened`/`web=none`），token 不进入会话列表。网页前端没有按会话定位的路由（`dsh-web-frontend` 不读 `?session=`），所以打开的是浏览器上次停留的那个会话，不会精确跳到被点击的对话。没有这两个文件、地址不是回环地址或端口已关闭时，仍返回原来的未找到反馈。
 
 工具审批不在检查点里，改从会话日志的审批事件读取（见上文状态判定），只用于显示“等待审批”；在岛上回答提问、在岛上批准或拒绝工具、任务/子 Agent 详细进度和准确失败原因不在本次接入范围。DSH 不安装 Claude/Codex 的钩子；这两个来源的钩子状态契约保持原样。
 
@@ -86,4 +88,4 @@ DSH 官方账户采用充值与赠送钱包；没有查到本地持久化的余�
 
 DeepSeek Harness desktop sessions are read offline from its versioned projection checkpoints, with DeepSeek's own mark on a light tile, the existing session cards and source settings. DSH uses prepaid wallets rather than subscription windows: its teal rings indicate balance/bonus availability and show currency amounts, never an invented percentage. Balance queries reuse the default saved DSH credential in native memory, use fixed official HTTPS endpoints, and cache only sanitized amounts in memory. Credentials and conversation contents are not copied into diagnostics or fixtures.
 
-Official source Desktop and DataElement / anywhere-labs community clients are distinguished by executable paths and Electron package metadata. Shared and isolated stores are merged by session ID. The official repository contains Desktop source, but its 38 inspected releases have no installer assets. Clicking a session focuses its running owner or the frontmost DSH main window; no stable external conversation deep link was found. Environment-only custom directories and real multi-client window behavior require manual verification.
+Official source Desktop and DataElement / anywhere-labs community clients are distinguished by executable paths and Electron package metadata. Shared and isolated stores are merged by session ID. The official repository contains Desktop source, but its 38 inspected releases have no installer assets. Clicking a session focuses its running owner or the frontmost DSH main window; no stable external conversation deep link was found. When no desktop window exists (DSH serving the web UI), the click falls back to the address its launcher stored in the store's `web/url.txt` or `web/plain-url.txt`: loopback only, port still listening, opened in the default browser, and never written to the focus log. Environment-only custom directories and real multi-client window behavior require manual verification.

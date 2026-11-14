@@ -110,3 +110,22 @@ fn a_pending_tool_approval_waits_instead_of_running() {
     assert_eq!(session.updated_at, 5000);
     assert_eq!(session.current_tool.as_ref().map(|tool| tool.name.as_str()), Some("pwsh"));
 }
+
+#[test]
+fn accepts_only_loopback_web_addresses() {
+    assert_eq!(
+        web_entry_url("http://127.0.0.1:58527/?token=abc\r\n"),
+        Some("http://127.0.0.1:58527/?token=abc".to_string())
+    );
+    // Trimmed, and a lone trailing slash is dropped; the browser opens either form.
+    assert_eq!(web_entry_url("  http://localhost:8080/  \n"), Some("http://localhost:8080".to_string()));
+    assert_eq!(web_entry_url("https://[::1]:443"), Some("https://[::1]:443".to_string()));
+    // Anything that would open a site the user did not start stays out.
+    assert_eq!(web_entry_url("http://evil.example.com:80/"), None);
+    assert_eq!(web_entry_url("file:///C:/Windows/System32/calc.exe"), None);
+    assert_eq!(web_entry_url("javascript:alert(1)"), None);
+    assert_eq!(web_entry_url("http://127.0.0.1/"), None);
+    assert_eq!(web_entry_url("http://127.0.0.1:0/"), None);
+    assert_eq!(web_entry_url("http://127.0.0.1:58527/?token=a b"), None);
+    assert_eq!(web_entry_url(""), None);
+}

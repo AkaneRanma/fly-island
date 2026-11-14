@@ -167,7 +167,7 @@ pub(super) fn focus_session(
     session_id: Option<&str>,
 ) -> bool {
     if provider == "dsh" {
-        return super::dsh_sessions::focus_desktop(session_id);
+        return super::dsh_sessions::focus_desktop(app_dir, session_id);
     }
     if provider == "workbuddy" {
         return super::workbuddy_sessions::focus_desktop(session_id);

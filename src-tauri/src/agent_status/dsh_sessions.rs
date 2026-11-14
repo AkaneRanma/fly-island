@@ -1,16 +1,30 @@
-//! Read-only DeepSeek Harness desktop checkpoints. Never opens the compressed conversation log
-//! or activates a session: projection checkpoints may lag the live host by its write interval.
+//! Read-only DeepSeek Harness desktop checkpoints. Never opens the compressed conversation log or
+//! activates a session (a click only brings the desktop window forward, or the web page the host
+//! serves when the desktop window is closed): projection checkpoints may lag the live host by its
+//! write interval.
 
-use std::{collections::HashMap, env, fs, io::Read, path::{Path, PathBuf}, sync::{Mutex, PoisonError}, time::SystemTime};
+use std::{
+    collections::HashMap, env, fs,
+    io::Read,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream},
+    path::{Path, PathBuf},
+    sync::{Mutex, PoisonError},
+    time::{Duration, SystemTime},
+};
 
 use serde_json::Value;
 
-use super::{markers::AGENT_RUNNING_STALE_AFTER_MS, session_host::SessionHost,
+use super::{focus_log::Attempt, markers::AGENT_RUNNING_STALE_AFTER_MS, session_host::SessionHost,
     sessions::AgentSessionSummary, snapshot::system_time_to_unix_millis, title::{folder_title, shorten},
     window_focus::{self, SessionHints}};
+use crate::win32;
 
 const MAX_CHECKPOINT_BYTES: u64 = 512 * 1024;
 const MAX_CHECKPOINTS: usize = 512;
+/// A DSH web host's launcher writes the address it serves on under its store's `web` folder.
+const WEB_URL_FILES: &[&str] = &["url.txt", "plain-url.txt"];
+const MAX_WEB_URL_BYTES: u64 = 8 * 1024;
+const WEB_PROBE_TIMEOUT: Duration = Duration::from_millis(150);
 type CachedJson = ((u64, Option<SystemTime>), Value);
 static CHECKPOINTS: Mutex<Option<HashMap<PathBuf, CachedJson>>> = Mutex::new(None);
 pub(super) const DESKTOP_APPS: &[&str] = super::dsh_desktop::APPS;
@@ -180,15 +194,87 @@ pub(super) fn list_sessions(home: &Path, now: i64, window_ms: i64) -> Vec<AgentS
     sessions
 }
 
-pub(super) fn focus_desktop(id: Option<&str>) -> bool {
-    let owner = crate::system::windows_home_dir().ok().and_then(|home| {
-        list_sessions(&home, super::snapshot::current_unix_millis(), i64::MAX)
+/// The address a DSH web launcher recorded, without the query being logged or needed by callers.
+/// Only a loopback http(s) address is accepted, so a stray file cannot make a click open any site.
+pub(super) fn web_entry_url(text: &str) -> Option<String> {
+    let line = text.lines().map(str::trim).find(|line| !line.is_empty())?;
+    if line.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let (scheme, rest) = line.split_once("://")?;
+    if !matches!(scheme, "http" | "https") {
+        return None;
+    }
+    let (authority, path) = rest.split_once('/').map_or((rest, ""), |(authority, path)| (authority, path));
+    let (host, port) = authority.rsplit_once(':')?;
+    if !matches!(host, "127.0.0.1" | "localhost" | "[::1]") {
+        return None;
+    }
+    let port: u16 = port.parse().ok().filter(|port| *port != 0)?;
+    let path = if path.is_empty() { String::new() } else { format!("/{path}") };
+    Some(format!("{scheme}://{host}:{port}{path}"))
+}
+
+/// Whether the host in `url` accepts a connection; a stale address (the web host was stopped or
+/// moved to another port) must not swallow the click.
+fn web_host_alive(url: &str) -> bool {
+    let Some((_, rest)) = url.split_once("://") else { return false };
+    let Some((authority, _)) = rest.split_once('/') else { return false };
+    let Some((host, port)) = authority.rsplit_once(':') else { return false };
+    let Ok(port) = port.parse::<u16>() else { return false };
+    let reachable = |address: SocketAddr| TcpStream::connect_timeout(&address, WEB_PROBE_TIMEOUT).is_ok();
+    let (v4, v6) = (SocketAddr::from((Ipv4Addr::LOCALHOST, port)), SocketAddr::from((Ipv6Addr::LOCALHOST, port)));
+    // "localhost" may resolve either way depending on the host's binding.
+    if host == "127.0.0.1" { reachable(v4) } else { reachable(v4) || reachable(v6) }
+}
+
+/// The newest recorded web address under any known DSH store that still answers. `url.txt` carries
+/// the login token, so it is only read, never copied into the log or the session list.
+fn stored_web_url(home: &Path, appdata: Option<PathBuf>) -> Option<String> {
+    let mut newest: Option<(SystemTime, String)> = None;
+    for (root, _) in super::dsh_desktop::roots(home, appdata) {
+        for name in WEB_URL_FILES {
+            let Ok(file) = fs::File::open(root.join("web").join(name)) else { continue };
+            let Ok(metadata) = file.metadata() else { continue };
+            if metadata.len() > MAX_WEB_URL_BYTES { continue; }
+            let mut text = String::new();
+            if file.take(MAX_WEB_URL_BYTES + 1).read_to_string(&mut text).is_err() { continue; }
+            let Some(url) = web_entry_url(&text) else { continue };
+            let stamp = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+            if newest.as_ref().is_none_or(|(known, _)| *known <= stamp) {
+                newest = Some((stamp, url));
+            }
+        }
+    }
+    newest.map(|(_, url)| url).filter(|url| web_host_alive(url))
+}
+
+/// Brings a DSH desktop window forward. When the desktop window is closed and DSH serves the web UI
+/// in a browser instead (see docs/deepseek-harness.md), opens that recorded address: the page has no
+/// stable per-conversation route, so this lands on the same session the browser showed last.
+pub(super) fn focus_desktop(app_dir: Option<&Path>, id: Option<&str>) -> bool {
+    let mut log = Attempt::new("dsh", id);
+    let home = crate::system::windows_home_dir().ok();
+    let owner = home.as_deref().and_then(|home| {
+        list_sessions(home, super::snapshot::current_unix_millis(), i64::MAX)
             .into_iter().find(|session| Some(session.session_id.as_str()) == id)
             .and_then(|session| session.host).and_then(|host| host.exe)
     });
     let windows = super::dsh_desktop::windows();
-    let target = super::dsh_desktop::preferred_window(&windows, owner.as_deref()).and_then(|index| windows.get(index));
-    target.is_some_and(|(_, pid)| window_focus::focus_session_window(&SessionHints::default(), &[*pid], None).is_some())
+    log.note(format!("windows={}", windows.len()));
+    let focused = super::dsh_desktop::preferred_window(&windows, owner.as_deref())
+        .and_then(|index| windows.get(index))
+        .is_some_and(|(_, pid)| window_focus::focus_session_window(&SessionHints::default(), &[*pid], None).is_some());
+    if focused {
+        log.note("window=focused");
+        log.finish(app_dir, "focused");
+        return true;
+    }
+    let url = home.and_then(|home| stored_web_url(&home, env::var_os("APPDATA").map(PathBuf::from)));
+    let opened = url.is_some_and(|url| win32::shell_open::open_url_without_ui(&url));
+    log.note(if opened { "web=opened" } else { "web=none" });
+    log.finish(app_dir, if opened { "web" } else { "not found" });
+    opened
 }
 
 /// Do not mark every desktop conversation as read merely because the app is foreground.
