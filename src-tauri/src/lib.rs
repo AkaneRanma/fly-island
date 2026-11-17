@@ -7,6 +7,8 @@ mod island;
 mod lyrics;
 mod media_control;
 mod media_plugins;
+mod plugin_host;
+mod release_flags;
 mod messenger_activation;
 mod notification_diagnostics;
 mod mail;
@@ -104,6 +106,9 @@ pub fn run() {
             }
             system::fullscreen::start(app.handle());
             media_plugins::init(app.handle());
+            if let Err(error) = plugin_host::init(app.handle()) {
+                eprintln!("failed to initialize plugins: {error}");
+            }
             agent_status::reply_marker::init();
             Ok(())
         })
@@ -118,6 +123,7 @@ pub fn run() {
             agent_approval;
             media_control;
             media_plugins;
+            plugin_host;
             lyrics;
             clipboard_history;
             translation;
@@ -132,6 +138,7 @@ pub fn run() {
                     clipboard_window::remember_bounds(handle);
                     agent_approval::shutdown();
                     wechat_reminders::shutdown();
+                    plugin_host::shutdown(handle);
                 }
             })
         });

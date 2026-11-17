@@ -3,9 +3,9 @@ import { listen } from "@tauri-apps/api/event";
 import type { AgentEffortLabels } from "./effortLabels";
 
 // 与 src-tauri/src/agent_status/snapshot.rs 中的 AgentTaskStatus、AgentStatusSnapshot，以及 agent_status/mod.rs 中的 AgentHooksInstallResult 对应。
-export type AgentProvider = "codex" | "claudeCode" | "dsh" | "workbuddy";
+export type AgentProvider = "codex" | "claudeCode" | "dsh" | "workbuddy" | "plugin";
 /** Only these providers install lifecycle hooks and write agent-status.json. */
-export type HookAgentProvider = Exclude<AgentProvider, "dsh" | "workbuddy">;
+export type HookAgentProvider = Exclude<AgentProvider, "dsh" | "workbuddy" | "plugin">;
 /** `waiting` (asked the user mid-turn) only comes from the session list, for Claude Code. */
 export type AgentTaskPhase = "idle" | "running" | "waiting" | "completed" | "failed" | "stale";
 
@@ -53,6 +53,8 @@ export type AgentHooksState = Record<HookAgentProvider, HookInstallState> & {
 
 /** Mirrors AgentSessionSummary in src-tauri/src/agent_status/sessions.rs. */
 export type AgentSessionSummary = {
+  pluginId?: string;
+  pluginAction?: string | null;
   provider: AgentProvider;
   sessionId: string;
   cwd: string | null;
@@ -67,6 +69,8 @@ export type AgentSessionSummary = {
   host: SessionHost | null;
   /** When the newest prompt was sent (Unix ms): the current or last turn runs from here. */
   turnStartedAt: number | null;
+  /** Latest explicit Codex task_complete timestamp; absent in older builds and other providers. */
+  lastCompletedAt?: number | null;
   /**
    * When the user last typed a prompt (Unix ms), not one Claude Code wrote by itself (a background
    * task's note, another session's message); null when none is known. Missing from older builds.

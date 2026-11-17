@@ -7,6 +7,7 @@ import { mailWebUrl } from "./mailDomain";
 import { useMailAccounts } from "./useMailAccounts";
 import { useMailReader } from "./useMailReader";
 import { useMarkAllRead } from "./useMarkAllRead";
+import { useMailOtp } from "./useMailOtp";
 
 const EMPTY_SNAPSHOT: MailSnapshot = {
   revision: 0, email: null, configured: false, enabled: false, syncing: false,
@@ -16,14 +17,20 @@ const EMPTY_SNAPSHOT: MailSnapshot = {
 type PreviewWindow = { email: string; id: string; receivedAt: number; expiresAt: number };
 
 /** The island's mail: which mailbox tab is shown, new-mail previews and the reader. */
-export function useMail(canPreview: boolean) {
+export function useMail(canPreview: boolean, { previewSeconds = 5, autoCopyOtp = true } = {}) {
   const t = useTranslation();
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [previewWindow, setPreviewWindow] = useState<PreviewWindow | null>(null);
   const previewRef = useRef<PreviewWindow | null>(null);
   const canPreviewRef = useRef(canPreview);
+  const previewSecondsRef = useRef(previewSeconds);
   const timingRef = useRef<QQPreviewTiming | null>(null);
   const reportErrorRef = useRef<(message: string) => void>(() => {});
+
+  useLayoutEffect(() => {
+    previewSecondsRef.current = previewSeconds;
+    timingRef.current = null;
+  }, [previewSeconds]);
 
   const showPreview = useCallback((next: PreviewWindow | null) => {
     previewRef.current = next;
@@ -34,6 +41,7 @@ export function useMail(canPreview: boolean) {
     showPreview(null);
   }, [showPreview]);
   const reportError = useCallback((message: string) => reportErrorRef.current(message), []);
+  const { copyOtp, copiedOtp, copyArrival } = useMailOtp(autoCopyOtp, reportError);
   const reader = useMailReader(t, clearPreview, reportError);
   const { closeReader, readerAccount, readMail: openInReader } = reader;
   const readerAccountRef = useRef(readerAccount);
@@ -44,15 +52,16 @@ export function useMail(canPreview: boolean) {
     if (readerAccountRef.current === next.email && (!next.configured || next.status === "authRequired")) closeReader();
   }, [clearPreview, closeReader]);
   const onEvent = useCallback((event: MailEvent) => {
+    copyArrival(event);
     if (!canPreviewRef.current || !event.windowVisible) { clearPreview(); return; }
     const { email, enabled, status } = event.snapshot;
     if (event.newestId && email && enabled && status === "connected") {
       const receivedAt = Date.now();
-      const { timing, expiresAt } = nextQQPreview(timingRef.current, receivedAt);
+      const { timing, expiresAt } = nextQQPreview(timingRef.current, receivedAt, previewSecondsRef.current);
       timingRef.current = timing;
       showPreview(expiresAt === null ? null : { email, id: event.newestId, receivedAt, expiresAt });
     }
-  }, [clearPreview, showPreview]);
+  }, [clearPreview, showPreview, copyArrival]);
   const accounts = useMailAccounts({ restore: true, onSnapshot, onEvent });
   const { mailboxes, setActionError } = accounts;
   reportErrorRef.current = setActionError;
@@ -101,6 +110,7 @@ export function useMail(canPreview: boolean) {
 
   return {
     ...accounts, ...reader, snapshot, setEnabled, refresh, selectMailbox, readMail, openMail, markAllRead,
+    copyOtp, copiedOtp,
     busy: accounts.busy || markingAll,
     /** Reading a mail: the island gives the panel more height. */
     wantsTallPanel: Boolean(reader.selectedMail),

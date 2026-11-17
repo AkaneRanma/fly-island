@@ -4,12 +4,19 @@ import { DEFAULT_SETTINGS } from "./settingsDefaults.ts";
 import { normalizeOrder } from "../../utils/order.ts";
 import { AUTO_COLLAPSE_SECONDS, TUCK_DELAY_SECONDS, COLLAPSED_ITEMS, COLLAPSED_SLOTS, PAGE_DOTS, SHELF_CLEANUP_DAYS, oneOf } from "./settingsLimits.ts";
 import type { IslandSettings, LegacyIslandSettings } from "./types";
+import { TODO_ROTATION_SECONDS, TODO_SCROLL_SPEED, MESSAGE_PREVIEW_SECONDS } from "./settingsLimits.ts";
 
 /** Todos, tucking and opening, module switches, the file shelf and lyrics. */
 export function normalizeBehaviorSettings(settings: LegacyIslandSettings | null | undefined) {
   const autoTuck = typeof settings?.autoTuck === "boolean" ? settings.autoTuck : DEFAULT_SETTINGS.autoTuck;
   return {
     positionLocked: settings?.positionLocked === true,
+    rotateTodos: settings?.rotateTodos === true,
+    showIdleTodoCount: settings?.showIdleTodoCount !== false,
+    todoRotationSeconds: wholeSeconds(settings?.todoRotationSeconds, TODO_ROTATION_SECONDS, TODO_ROTATION_SECONDS.default),
+    todoRotationMode: oneOf(["switch", "scroll"] as const, settings?.todoRotationMode, "switch"),
+    todoScrollSpeed: wholeSeconds(settings?.todoScrollSpeed, TODO_SCROLL_SPEED, TODO_SCROLL_SPEED.default),
+    messagePreviewSeconds: wholeSeconds(settings?.messagePreviewSeconds, MESSAGE_PREVIEW_SECONDS, MESSAGE_PREVIEW_SECONDS.default),
     carryOverIncompleteTodos:
       typeof settings?.carryOverIncompleteTodos === "boolean"
         ? settings.carryOverIncompleteTodos
@@ -39,6 +46,7 @@ export function normalizeBehaviorSettings(settings: LegacyIslandSettings | null 
     shelfAutoCleanupDays: oneOf(SHELF_CLEANUP_DAYS, settings?.shelfAutoCleanupDays, DEFAULT_SETTINGS.shelfAutoCleanupDays),
     ...normalizeLyricsSettings(settings),
     mailEnabled: settings?.mailEnabled !== false,
+    autoCopyOtp: typeof settings?.autoCopyOtp === "boolean" ? settings.autoCopyOtp : DEFAULT_SETTINGS.autoCopyOtp,
     collapsedPriority: normalizeOrder(settings?.collapsedPriority, COLLAPSED_ITEMS),
     collapsedShowCover: settings?.collapsedShowCover !== false,
     collapsedLayout: normalizeOrder(settings?.collapsedLayout, COLLAPSED_SLOTS),

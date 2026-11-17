@@ -3,8 +3,9 @@ import { DEFAULT_LYRICS_SETTINGS } from "../media/lyrics/lyricsSettings.ts";
 import {
   DEFAULT_AGENT_VISIBLE_ROWS, DEFAULT_AUTO_TUCK_RETRACT_DELAY_MS, DEFAULT_CLIPBOARD_VISIBLE_ROWS, DEFAULT_HOVER_COLLAPSE_DELAY_MS,
   DEFAULT_HOVER_EXPAND_DELAY_MS, DEFAULT_ISLAND_CORNER_RADIUS, DEFAULT_MAX_PANEL_HEIGHT, DEFAULT_SHELF_ITEMS, DEFAULT_TASK_TEXT_COLOR,
-  AUTO_COLLAPSE_SECONDS, COLLAPSED_ITEMS, COLLAPSED_SLOTS, PAGE_DOTS, TUCK_DELAY_SECONDS,
+  AUTO_COLLAPSE_SECONDS, COLLAPSED_ITEMS, COLLAPSED_SLOTS, PAGE_DOTS, TUCK_DELAY_SECONDS, DEFAULT_AUTO_COPY_OTP,
   AGENT_QUOTA_SOURCES, COLLAPSED_HEIGHT, COLLAPSED_WIDTH, ISLAND_FONT_PERCENT,
+  TODO_ROTATION_SECONDS, TODO_SCROLL_SPEED, MESSAGE_PREVIEW_SECONDS,
 } from "./settingsLimits.ts";
 import type { IslandSettings } from "./types";
 
@@ -76,7 +77,10 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   todoReorderVersion: 1,
   todoTimerEnabled: false,
   rotateTodos: false,
-  todoRotationSeconds: 5,
+  todoRotationSeconds: TODO_ROTATION_SECONDS.default,
+  todoRotationMode: "switch",
+  todoScrollSpeed: TODO_SCROLL_SPEED.default,
+  messagePreviewSeconds: MESSAGE_PREVIEW_SECONDS.default,
   autoTuck: true,
   tuckStyle: "line",
   tuckDelaySeconds: TUCK_DELAY_SECONDS.default,
@@ -113,6 +117,7 @@ export const DEFAULT_SETTINGS: IslandSettings = {
   shelfShowCount: true,
   ...DEFAULT_LYRICS_SETTINGS,
   mailEnabled: true,
+  autoCopyOtp: DEFAULT_AUTO_COPY_OTP,
   gameDoNotDisturb: true,
   gameAutoTuck: false,
   // Clipboard: keep the original four-row island height on first launch.

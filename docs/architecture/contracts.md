@@ -1,12 +1,25 @@
 # 对外契约清单
 
+Codex 会话摘要（2026-11-15）：`list_agent_sessions` 可选返回 `lastCompletedAt`（最近显式 `task_complete` 的 Unix 毫秒时间；未知时省略）。前端兼容字段缺失，原有字段、命令名、参数、事件及持久化格式不变。用于识别两次轮询之间完成的一轮，首次看到的完成仅在 15 秒内提醒；不以文件修改时间代替完成时间。
+
+歌词接口兼容扩展（2026-11-15）：`get_lyrics` 的 `query.sourceAppId` 为可缺省字符串，`query.wordFill` 为可缺省布尔值（默认 false），`query.musicFolder` 为可缺省字符串（放歌的文件夹，读歌曲文件自带的歌词）；旧前端不传仍可查询在线歌词。开启逐字填充时优先查找逐字结果，保留第一个行级结果兜底。返回 `source` 新增 `file`（歌曲文件自带的歌词）/ `qqmusic` / `soda`，`lrc` 仍为增强 LRC 字符串。缓存可缺省的 `schemaVersion` 新值为 3，旧字段保持可读，详见 [歌词源说明](../lyrics-sources.md)。
+
 纯重构中下列标识不得改变，规则见根目录 [AGENTS.md](../../AGENTS.md#对外契约不得随意变更)。新增契约时同步更新本节。
 
 ## localStorage key
 
+`focusd-island-settings.messagePreviewSeconds` 为岛上通知停留时长，3–30 的整数秒，默认 5；旧记录缺失或非法值回退到 5。
+
+`focusd-island-settings` 的待办轮换字段兼容旧记录：`rotateTodos` 默认 false、`showIdleTodoCount` 默认 true、`todoRotationSeconds` 默认 5（1–60）、`todoRotationMode` 默认 `switch`（`switch` / `scroll`）、`todoScrollSpeed` 默认 20（10–40 逻辑像素/秒）。`todoRotationCount` 已移除，旧记录中的该字段忽略且不再写回。轮换候选为全部已开始且未完成的普通待办，按列表顺序显示；缺失或非法设置由 normalize 回退。
+
+待办并行状态兼容扩展（2026-11-15）：开启轮换后，开始任务追加到 `focusd-island-active-todos`（去重的字符串 ID 数组，顺序为开始顺序），倒计时独立保存到 `focusd-island-todo-timers`（`{ todoId, endsAt, durationMinutes, notified }[]`，每项 ID 唯一）。首次读取若新键缺失、JSON 损坏或根类型错误，则从旧 `focusd-island-active-todo` 字符串和 `focusd-island-todo-timer` 单对象兼容读取；新键中的空数组表示已停止，不恢复旧值。非法数组项忽略，通知标记缺失按 false。原待办列表数据格式不变。
+
+新旧键同步写入：第一个开始的活动 ID 作为主任务，旧 `focusd-island-active-todo` 仍写字符串；旧 `focusd-island-todo-timer` 仅保存主任务的计时对象，主任务无计时或没有活动任务时删除。关闭轮换保留主任务，停止其他任务并清除其倒计时；之后开始另一项按原单任务规则替换、清除旧计时并收起岛屿。轮换开启时开始/再来一轮保持展开，再次点击停止仅清除该任务。完成、删除或无效 ID 均会从活动状态及计时中移除；关闭番茄钟清空全部计时但保留活动任务。每轮首次到时前写入 `notified: true`；同一次检查中多项到时一起标记、提醒一次。跨天保留所有计时中或已到时待处理任务的 ID 与结束时间。
+
 | key | 当前定义位置 |
 |---|---|
 | `focusd-island-settings` | `features/appearance/storage.ts` |
+
 | `focusd-island-tuck-line-migration`（`"1"`：细线默认样式迁移完成；已有存档的 edge/hidden 统一改成 line，先保存设置再写标记，无存档只写标记；之后尊重手动选择，失败下次重试） | `features/appearance/storage.ts`、`tuckLineMigration.ts` |
 | `focusd-island-collapsed-text-default-v1`（迁移标记） | `features/appearance/storage.ts` |
 | `focusd-island-color-refresh-v1`（`"1"`：2026-11-13 默认配色刷新完成；无存档或三色已等于新默认值时只写标记、不新建备份，其余旧存档覆盖三色，备份 → 设置 → 标记，重试保留已有备份） | `features/appearance/storage.ts`、`colorRefresh.ts` |
@@ -15,8 +28,10 @@
 | `focusd-island-color-presets`（`{ id, islandBackgroundColor, taskTextColor, pulseColor }[]`；id 为字符串，三色均为大写 `#RRGGBB`，最多 8 项、三色组合去重；损坏记录跳过，非法根数据视为空；不复用已退役的 `focusd-island-setting-presets`） | `features/appearance/storage.ts`、`colorPresets.ts` |
 | `focusd-island-setting-presets`（2026-11-09 起不再读写：样式预设已去掉，旧数据留着不动） | — |
 | `focusd-island-todos` | `features/todos/storage.ts` |
-| `focusd-island-active-todo` | `features/todos/storage.ts` |
-| `focusd-island-todo-timer`（单轮待办倒计时：`{ todoId, endsAt, durationMinutes, notified }`，`endsAt` 为 Unix 毫秒时间；`notified` 在首次到时提醒前写为 true，旧记录缺此字段按 false；结束、完成、删除或切换待办时清除） | `features/todos/storage.ts` |
+| `focusd-island-active-todo`（主任务 ID 字符串，兼容原单任务格式） | `features/todos/storage.ts` |
+| `focusd-island-active-todos`（全部活动 ID 数组，按开始顺序；无新数据时兼容读取旧单 ID） | `features/todos/storage.ts` |
+| `focusd-island-todo-timer`（主任务倒计时：`{ todoId, endsAt, durationMinutes, notified }`，`endsAt` 为 Unix 毫秒时间；保留原单对象格式） | `features/todos/storage.ts` |
+| `focusd-island-todo-timers`（各任务独立倒计时对象数组；无新数据时兼容读取旧单对象） | `features/todos/storage.ts` |
 | `focusd-island-todo-durations`（各项待办的时长 `{ [todoId]: 1–240 的整数分钟 }`，没有记录或无效按 15 分钟，写入时去掉已删除待办；2026-11-12 起取代所有待办共用的 `focusd-island-todo-duration`，旧 key 不再读取也不删除） | `features/todos/storage.ts` |
 | `focusd-island-current-date` | `features/todos/storage.ts` |
 | `focusd-island-archives` | `features/todos/storage.ts` |
@@ -114,7 +129,7 @@
 - Hook 受管区块标记：`# BEGIN/END FocuSD Agent Status Hooks`，命令签名前缀 `focusd-agent-`。
 - 更新端点与 `latest.json` 格式：见 `tauri.conf.json` 和 `docs/updater.md`。
 - 在岛上审批（2026-11-06 起）：端点路径 `POST /claude/permission-request`、`POST /codex/permission-request`，以及 Claude Code `PreToolUse` 钩子的 `POST /claude/ask-user-question`（只接 AskUserQuestion，回答以 `updatedInput.answers` 返回），以及 Claude Code 动静钩子的 `POST /claude/activity`（2026-11-07 起；请求体是 `PostToolUse` / `PostToolUseFailure` / `PermissionDenied` / `Stop` / `SubagentStop` / `UserPromptSubmit` 的钩子输入，总是回 `{}`，用来撤掉已在终端答过的卡片，事件 `agent-approval-closed` 的 `reason` 为 `answeredElsewhere`）（`Authorization: Bearer <令牌>`，`Host` 须为本机端口，带 `Origin` 的请求拒绝），返回 Claude Code `PermissionRequest` 钩子的格式，空对象 `{}` 表示交还终端；`agent-approval.json` 字段 `port`、`token`；Tauri 命令 `set_agent_approval_enabled`、`agent_approval_decide`（`decision` 为 `allow` / `deny` / `allowAlways` / `terminal`；提问为 `answer` 加 `answers`（问题原文 → 回答）或 `terminal`）、`agent_approval_pending`；事件见上表。
-- 歌词缓存（2026-11-06 起）：应用数据目录下的 `lyrics-cache/<FNV-1a 哈希>.json`（`{ key, lrc, source?, translation?, wordTimes?, durationMs?, durations?, fetchedAt }`；`lrc` 可带增强 LRC 的逐字时间 `<mm:ss.xx>`（酷狗 KRC 转来）；`wordTimes` 为 true 的条目由保留逐字时间的版本写入，没有它的酷狗旧条目会重新下载；`durations` 为 true 的条目由记录歌曲时长的版本写入（`durationMs` 是来源给的时长，可为空），没有它的旧条目会重新查一次（2026-11-10）；`lrc` 为 null 表示所有在线来源都没有，7 天后重查；`source` 为 `lrclib` / `kugou` / `netease`，没有时是 LRCLIB 的旧条目；开着中文来源时 key 末尾多 `cn`；最多 2000 个文件）。设置项 `lyricsFolder`、`lyricsOnline`（2026-11-10 起默认开，保存过 false 的仍为关）、`lyricsChinese`（也查酷狗和网易云，同样默认开）、`lyricsOffsetMs`。每首歌自己的偏移存在 localStorage `focusd-island-lyrics-offsets`（`{ <歌名歌手时长/2 秒>: 毫秒 }`，±10 秒，最多 500 首）。媒体状态多了 `trackId`：播放器插件写进流派的歌曲 ID（`NCM-<id>`、`QQ-<id>`），`get_lyrics` 的查询多了 `chinese`、`trackId`，返回值多了 `translation`，2026-11-10 起还有可选的 `durationMs`（来源给的歌曲时长，播放器不报告时长时用于进度条）。
+- 歌词缓存（2026-11-06 起）：应用数据目录下的 `lyrics-cache/<FNV-1a 哈希>.json`（`{ key, lrc, source?, translation?, wordTimes?, durationMs?, durations?, fetchedAt }`；`lrc` 可带增强 LRC 的逐字时间 `<mm:ss.xx>`（酷狗 KRC 转来）；`wordTimes` 为 true 的条目由保留逐字时间的版本写入，没有它的酷狗旧条目会重新下载；`durations` 为 true 的条目由记录歌曲时长的版本写入（`durationMs` 是来源给的时长，可为空），没有它的旧条目会重新查一次（2026-11-10）；`lrc` 为 null 表示所有在线来源都没有，7 天后重查；`source` 为 `lrclib` / `kugou` / `netease`，没有时是 LRCLIB 的旧条目；开着中文来源时 key 末尾多 `cn`；最多 2000 个文件）。设置项 `lyricsFolder`、`lyricsMusicFolder`（2026-11-15 新增，放歌的文件夹；先读文件自带的歌词——同名的 .lrc 优先，其次 FLAC 的 `LYRICS` 标签与 MP3 的 `USLT` 帧，只读本地）、`lyricsOnline`（2026-11-10 起默认开，保存过 false 的仍为关）、`lyricsChinese`（也查酷狗和网易云，同样默认开）、`lyricWordFill`（2026-11-15 新增，逐字填充，默认关）、`lyricsOffsetMs`。每首歌自己的偏移存在 localStorage `focusd-island-lyrics-offsets`（`{ <歌名歌手时长/2 秒>: 毫秒 }`，±10 秒，最多 500 首）。媒体状态多了 `trackId`：播放器插件写进流派的歌曲 ID（`NCM-<id>`、`QQ-<id>`），`get_lyrics` 的查询多了 `chinese`、`trackId`，返回值多了 `translation`，2026-11-10 起还有可选的 `durationMs`（来源给的歌曲时长，播放器不报告时长时用于进度条）。
 - 岛屿设置 `focusd-island-settings` 2026-11-10 新增三个字段：`collapsedPriority`（`["agent","lyrics","todo"]` 的某种顺序，收起的岛先显示哪一样）、`collapsedShowCover`（布尔，默认 false）、`pageOrder`（`["todo","music","clipboard","shelf"]` 的某种顺序，展开岛顶栏的页面圆点）；同日又加 `collapsedLayout`（`["text","mail","shelf","music","agents"]` 的某种顺序，收起的岛上文字和状态图标从左到右的位置，`text` 之前的图标在文字左边）。读取时去掉未知和重复项，缺的按默认顺序补在末尾。
 - 岛屿设置 `focusd-island-settings` 的 `pageOrder` 2026-11-11 起多一个可选项 `"translation"`（翻译的页面胶囊），默认顺序 `["todo","music","clipboard","shelf","translation"]`；旧数据缺它时按上面的规则补在末尾，旧版本读到它会当未知项丢掉。
 - 岛屿设置 `focusd-island-settings` 2026-11-11 新增 `autoCollapseSeconds`（整数秒 0–600，0 表示从不；鼠标离开展开的岛多少秒后收起）和 `tuckDelaySeconds`（整数秒 3–600，默认 30；收起的岛闲置多少秒后贴边成细线）。`autoCollapseSeconds` 最初只存 3 / 5 / 10 / 30 / 0，这些值照旧有效；非数字或旧数据没有这个字段时：`autoTuck` 为 true 读成 30，否则读成 0；超出范围按边界读。旧版本存过的 `autoTuckSeconds` 不再读取，`tuckDelaySeconds` 缺失时读成 30。
@@ -148,3 +163,10 @@
 - 剪贴板（2026-11-13）：`focusd-island-settings.clipboardVisibleRows` 现可设置为 3–8 的整数，缺失或非法值为 4；`set_clipboard_history_settings` 的 `maxItems` 范围扩为 5–500，默认 30，命令、数据字段和历史文件格式不变。
 - 配色（2026-11-14）：`focusd-island-settings` 新增 `colorScheme`（`"dark"` / `"light"` / `"system"`，缺失或未知值为 `"dark"`），属于外观字段，进外观预设，恢复默认外观会复位。三种自定义颜色字段格式不变；值等于任一配色的默认值时视为跟随配色（`features/appearance/theme.ts`）。新命令 `set_settings_window_theme(dark: boolean)`：只在设置窗口调用，设置它的 DWM 标题栏深浅和窗口底色，无返回值；自有 Rust 命令，不需要新权限。`tauri.conf.json` 去掉 settings、clipboard 窗口固定的 `"theme": "Dark"`。
 - 质感（2026-11-14）：`focusd-island-settings` 新增 `material`（`"classic"` / `"liquidGlass"` / `"frostedGlass"`），取代旧字段 `appearanceMode`（`"classic"` / `"liquidGlass"`）。读取时 `material` 合法就用它；否则旧的 `appearanceMode: "liquidGlass"` 迁移为 `"liquidGlass"`，其余为 `"classic"`；保存时不再写 `appearanceMode`（`normalizeLayoutSettings.ts`）。属于外观字段，进外观预设。`set_island_interaction` 的 `glassEnabled` 在两种玻璃下都为 `true`，原生侧照旧只回 `"css-fallback"`。
+
+## 插件 API v1
+
+- 新目录：`src-tauri/src/plugin_host/`、`src/features/plugins/`、`plugins/<id>/`（独立 crate）、`plugins/sdk/`、`docs/plugins/`。
+- 命令：`get_plugins()`、`get_plugins_index()`、`install_plugin(id)`、`set_plugin_enabled(id, enabled)`、`uninstall_plugin(id)`、`set_plugin_setting(id, key, value)`、`run_plugin_action(id, action)`、`configure_plugins(developerMode, indexUrl)`、`load_development_plugin(directory)`。
+- 事件：`plugins-changed`（无敏感数据；前端重新 get_plugins）。stdio RPC：`initialize`、`action`、`publish`，停止时可发送无 id 的可选 `shutdown` 通知；旧 v1 插件仍由宿主限时结束，完整 schema 见 `docs/plugins/api.md`。
+- manifest：`fly-island-plugin.json`；发布索引：`plugins-index.json`。现有命令、事件、窗口、localStorage key、latest.json 格式和更新端点保持兼容。

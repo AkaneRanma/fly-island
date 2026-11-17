@@ -45,14 +45,3 @@
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
 }
-
-/* Kept under the button so the native calendar opens next to it. */
-.todo-date-picker__input {
-  color-scheme: var(--color-scheme);
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  pointer-events: none;
-}

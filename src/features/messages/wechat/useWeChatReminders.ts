@@ -18,20 +18,23 @@ const EMPTY_SNAPSHOT: ReminderSnapshot = {
   previewEnabled: false, previewStatus: "off", hideMinimizedTaskbar: false, messages: [],
 };
 
-export function useWeChatReminders(canPreview: boolean, { restore = true } = {}) {
+export function useWeChatReminders(canPreview: boolean, { restore = true, previewSeconds = 5 } = {}) {
   const t = useTranslation();
   const [snapshot, setSnapshot] = useState(EMPTY_SNAPSHOT);
   const [busy, setBusy] = useState(isTauri);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [previewReceivedAt, setPreviewReceivedAt] = useState<number | null>(null);
+  const [previewWindow, setPreviewWindow] = useState<{ receivedAt: number; expiresAt: number } | null>(null);
+  const previewSecondsRef = useRef(previewSeconds);
   const canPreviewRef = useRef(canPreview);
   const revisionRef = useRef(-1);
   const attentionRef = useRef<number | null>(null);
   const actionPending = useRef(false);
 
+  useLayoutEffect(() => { previewSecondsRef.current = previewSeconds; }, [previewSeconds]);
+
   useLayoutEffect(() => {
     canPreviewRef.current = canPreview;
-    if (!canPreview) setPreviewReceivedAt(null);
+    if (!canPreview) setPreviewWindow(null);
   }, [canPreview]);
 
   const acceptSnapshot = useCallback((next: ReminderSnapshot) => {
@@ -53,9 +56,12 @@ export function useWeChatReminders(canPreview: boolean, { restore = true } = {})
         if (cancelled || !acceptSnapshot(payload.snapshot)) return;
         if (!payload.snapshot.enabled || !payload.snapshot.pending
           || payload.snapshot.status !== "listening" || !payload.windowVisible || !canPreviewRef.current) {
-          setPreviewReceivedAt(null);
+          setPreviewWindow(null);
         } else if (newlyPending) {
-          setPreviewReceivedAt((previous) => Math.max(Date.now(), (previous ?? 0) + 1));
+          setPreviewWindow((previous) => {
+            const receivedAt = Math.max(Date.now(), (previous?.receivedAt ?? 0) + 1);
+            return { receivedAt, expiresAt: receivedAt + previewSecondsRef.current * 1_000 };
+          });
         }
       });
       if (cancelled) { unlisten(); return; }
@@ -72,13 +78,13 @@ export function useWeChatReminders(canPreview: boolean, { restore = true } = {})
   }, [acceptSnapshot, restore]);
 
   useEffect(() => {
-    if (previewReceivedAt === null) return;
-    const timer = window.setTimeout(() => setPreviewReceivedAt(null),
-      Math.max(0, previewReceivedAt + 5_000 - Date.now()));
+    if (previewWindow === null) return;
+    const timer = window.setTimeout(() => setPreviewWindow(null),
+      Math.max(0, previewWindow.expiresAt - Date.now()));
     return () => window.clearTimeout(timer);
-  }, [previewReceivedAt]);
+  }, [previewWindow]);
 
-  const run = useCallback(async (action: () => Promise<void>) => {
+  const run = useCallback(async (action: () => Promise<void | boolean>) => {
     if (actionPending.current) return;
     if (!isTauri()) {
       setActionError(t.wechat.desktopOnly);
@@ -88,8 +94,7 @@ export function useWeChatReminders(canPreview: boolean, { restore = true } = {})
     setBusy(true);
     setActionError(null);
     try {
-      await action();
-      return true;
+      return (await action()) !== false;
     } catch (error) {
       setActionError(weChatOpenErrorText(error, t.wechat.openErrors));
       return false;
@@ -102,18 +107,18 @@ export function useWeChatReminders(canPreview: boolean, { restore = true } = {})
   const setEnabled = useCallback((enabled: boolean) => run(async () => {
     acceptSnapshot(await setWeChatRemindersEnabled(enabled));
     saveWeChatRemindersEnabled(enabled);
-    if (!enabled) setPreviewReceivedAt(null);
+    if (!enabled) setPreviewWindow(null);
   }), [acceptSnapshot, run]);
 
   const clear = useCallback(() => run(async () => {
     acceptSnapshot(await clearWeChatReminders());
-    setPreviewReceivedAt(null);
+    setPreviewWindow(null);
   }), [acceptSnapshot, run]);
 
   const setPreviewEnabled = useCallback((enabled: boolean) => run(async () => {
     acceptSnapshot(await setWeChatMessagePreviewEnabled(enabled));
     saveWeChatMessagePreviewEnabled(enabled);
-    if (!enabled) setPreviewReceivedAt(null);
+    if (!enabled) setPreviewWindow(null);
   }), [acceptSnapshot, run]);
 
   const setHideMinimizedTaskbar = useCallback((hidden: boolean) => run(async () => {
@@ -123,20 +128,23 @@ export function useWeChatReminders(canPreview: boolean, { restore = true } = {})
 
   /** Opening one conversation reads all of its previews; the other chats stay. */
   const openWeChat = useCallback((messageId?: string) => run(async () => {
+    let opened = true;
     if (messageId) {
-      if (!await launchWeChatConversation(messageId)) setActionError(t.wechat.jumpUnavailable);
+      opened = await launchWeChatConversation(messageId);
+      if (!opened) setActionError(t.wechat.jumpUnavailable);
       // WeChat is already open; a list that failed to update is not worth an error.
       await dismissWeChatConversation(messageId).then(acceptSnapshot).catch(() => undefined);
     } else {
       await launchWeChat();
     }
-    setPreviewReceivedAt(null);
+    setPreviewWindow(null);
+    return opened;
   }), [acceptSnapshot, run, t.wechat.jumpUnavailable]);
 
   const latest = snapshot.messages[0];
   const message = latest?.receivedAt === snapshot.lastAttentionAt ? latest : undefined;
-  const preview: MessagePreview | null = canPreview && snapshot.pending && previewReceivedAt !== null ? {
-    source: "wechat", title: message?.contact ?? "", body: message?.body ?? "", receivedAt: previewReceivedAt,
+  const preview: MessagePreview | null = canPreview && snapshot.pending && previewWindow !== null ? {
+    source: "wechat", title: message?.contact ?? "", body: message?.body ?? "", receivedAt: previewWindow.receivedAt,
     wechatMessageId: message?.id,
   } : null;
   return { snapshot, busy, actionError, clear, setEnabled, setPreviewEnabled, setHideMinimizedTaskbar, openWeChat, preview };

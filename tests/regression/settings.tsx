@@ -12,8 +12,11 @@ import { I18nProvider, LOCALE_STORAGE_KEY } from "../../src/i18n";
 import { commands, mailCalls, REPLY_MARKER, replyMarkerCalls, translationShortcutCalls } from "./settingsMocks";
 import { checkAppearance, prepareColorRegression } from "./settingsAppearance";
 import { checkQuotaSettings } from "./settingsQuota";
-import { checkKeepVisible } from "./settingsKeepVisible";
+import { checkGeneralControls } from "./settingsGeneral";
 import { checkGroups } from "./settingsGroups";
+import { checkTodoRotation } from "./settingsTodoRotation";
+import { checkMessagePreview } from "./settingsMessagePreview";
+import { PLUGINS_ENABLED } from "../../src/features/releaseFlags.ts";
 
 const query = new URLSearchParams(location.search);
 const automated = query.has("test");
@@ -94,10 +97,6 @@ if (!automated) {
       check(panel.scrollWidth <= panel.clientWidth, `${category}: nothing overflows horizontally`);
       check(!panel.querySelector("input[type=number]"), `${category}: no native number inputs`);
       // Settings stay short: a handful of rows per page (Messages lists mailboxes, so it is left out).
-      // Appearance 16 -> 19: the page text color row and the whole-look preset section (2026-11-14); 19 -> 20: the empty-preset row.
-      // General has two more for its island timers (2026-11-11); Agents two for the session sources DSH
-      // gained on 2026-11-13 (Claude Code and Codex). General 10 -> 11: the tucked look the owner asked
-      // for on 2026-11-13.
       const rowCount = panel.querySelectorAll(".settings-row").length;
       // Agents 11 -> 13: the WorkBuddy session source and its sign-in row (2026-11-13 老板要求 WorkBuddy 会话来源).
       // Appearance: 9 -> 12 on 2026-11-13 for island font size (+1) and notch auto-width/height (+2).
@@ -107,6 +106,7 @@ if (!automated) {
       // Appearance 14 -> 16: the colour scheme and the material the owner asked for on 2026-11-14
       // (the glass strength row shows only with a glass).
       await checkGroups(category, panel, check);
+      if (category === "todos") await checkTodoRotation(panel, check);
       // Appearance 16 -> 19: the page text colour row and the whole-look presets (empty state + name row).
       const maxRows = category === "agents" ? 13 : category === "general" ? 14 : category === "appearance" ? 19 : 8;
       if (category === "appearance") {
@@ -126,30 +126,9 @@ if (!automated) {
         await act(async () => toggle.click());
         check(!size(), "Disabling curves hides the slider again");
       }
-      if (category === "general") {
-        await checkKeepVisible(panel, check);
-        const timers = [...panel.querySelectorAll<HTMLInputElement>("input[role='spinbutton']")];
-        const labels = timers.map((input) => panel.querySelector(`label[for='${CSS.escape(input.id)}']`)?.textContent ?? "");
-        check(timers.length === 2 && timers.every((input) => input.value === "30"),
-          `general: the collapse and tuck delays are two number fields at 30 s (${timers.map((input) => input.value).join(", ")})`);
-        check(labels.length === 2 && labels.every(Boolean) && labels[0] !== labels[1], `general: the two delays have different labels (${labels.join(" / ")})`);
-        const first = timers[0];
-        const plus = first.parentElement!.querySelector<HTMLButtonElement>("button:last-child")!;
-        await act(async () => plus.click());
-        check(first.value === "31" && JSON.parse(localStorage.getItem("focusd-island-settings")!).autoCollapseSeconds === 31, "Plus increments by 1 and saves");
-        await type(first, "9999");
-        await act(async () => { first.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
-        check(first.value === "600" && plus.disabled, `Blur clamps to max and disables Plus (${first.value}, ${plus.disabled}, connected=${first.isConnected})`);
-        await type(first, "30");
-        await act(async () => { first.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
-        const tuckLooks = [...panel.querySelectorAll<HTMLButtonElement>("[role='group'][aria-label='贴边样式'] button")];
-        check(tuckLooks.map((button) => button.textContent).join() === "露边,细线,隐藏" && tuckLooks[1].getAttribute("aria-pressed") === "true", "general: the tucked look offers edge, line and hidden, line by default");
-        await act(async () => tuckLooks[1].click());
-        check(JSON.parse(localStorage.getItem("focusd-island-settings")!).tuckStyle === "line", "Choosing the line look saves it");
-        check(JSON.parse(localStorage.getItem("focusd-island-panel-preview")!).mode === "tucked", "Choosing even the current tuck style requests an immediate tucked preview");
-        await act(async () => tuckLooks[0].click());
-      }
+      if (category === "general") await checkGeneralControls(panel, check, type);
       if (category === "messages") {
+        await checkMessagePreview(panel, check);
         const notice = panel.querySelector(".messages-settings__wechat-risk");
         const toggle = notice?.closest(".settings-row")?.querySelector<HTMLInputElement>("input[role=switch]");
         check(notice?.textContent?.includes("账号限制") && toggle?.checked === false,
@@ -159,9 +138,14 @@ if (!automated) {
     }
     check(settingsCategoryFor("sounds") === "agents" && settingsCategoryFor("agentAlerts") === "agents" && settingsCategoryFor("agentApprovals") === "agents"
       && settingsCategoryFor("shelf") === "clipboard", "Old names of merged pages open the page they became");
-    await openPage("plugins");
-    const plugins = element(".editor-panel .plugins-settings"), block = plugins.getBoundingClientRect(), content = [...plugins.children].map(child => child.getBoundingClientRect());
-    check(plugins.textContent?.trim() === "暂无插件" && plugins.querySelector("svg.lucide-puzzle") && !plugins.querySelector("button, a, input") && Math.abs((Math.min(...content.map(rect => rect.top)) + Math.max(...content.map(rect => rect.bottom)) - block.top - block.bottom) / 2) <= 8, "The plugins page shows only its Puzzle icon and empty state, vertically centered within 8px");
+    if (PLUGINS_ENABLED) {
+      await openPage("plugins");
+      const plugins = element(".editor-panel .plugins-settings");
+      check(plugins.textContent?.includes("暂无插件") && Boolean(plugins.querySelector("svg.lucide-puzzle")),
+        "The plugins page renders its installed section and puzzle empty state");
+    } else {
+      check(!document.querySelector("[data-category='plugins'], .plugins-settings"), "The release has no plugin category or panel");
+    }
     await checkAppearance(check);
     const materialButton = (label: string) => [...document.querySelectorAll<HTMLButtonElement>(".editor-panel button")].find((button) => button.textContent === label);
     const strengthRow = () => [...document.querySelectorAll(".settings-row")].some((row) => row.textContent?.includes("玻璃强度"));

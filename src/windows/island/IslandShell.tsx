@@ -1,4 +1,5 @@
 import { isGlass } from "../../features/appearance/settings";
+import { usePluginPreview } from "../../features/messages/pluginNotifications";
 import { useState, type ReactNode } from "react";
 import type { AgentSession } from "../../features/agent-status/session";
 import type { QuotaAlert } from "../../features/agent-status/quotaAlerts";
@@ -20,6 +21,7 @@ import { useMotionLayer } from "./useMotionLayer";
 import { usePageFadeIn } from "./usePageFadeIn";
 import type { LyricsSettings } from "../../features/media/lyrics/useLyrics";
 import type { TodoTimer } from "../../features/todos/timer";
+import type { TodoRotationDisplay } from "./CollapsedTodoContent";
 import "./IslandShell.css";
 import "./IslandPageText.css";
 import "./IslandGlass.css";
@@ -47,6 +49,7 @@ type IslandShellProps = {
   showCollapsedText: boolean;
   collapsedTaskTitle: string | null;
   todoTimer?: TodoTimer | null;
+  todoRotation?: TodoRotationDisplay | null;
   collapsedTodoCount: number | null;
   /** Which of the agent, the lyric line and a todo the collapsed island's text shows, if any. */
   collapsedItem: CollapsedItem | null;
@@ -109,6 +112,7 @@ export function IslandShell({
   showCollapsedText,
   collapsedTaskTitle,
   todoTimer = null,
+  todoRotation = null,
   collapsedTodoCount,
   collapsedItem,
   collapsedLayout,
@@ -152,10 +156,12 @@ export function IslandShell({
   const qqNotificationCount = qqNotifications.snapshot.items.length;
   const wechatPending = wechatReminders.snapshot.pending;
   const [latestPreviewAt, setLatestPreviewAt] = useState(0);
+  const pluginPreview = usePluginPreview(mode === "collapsed");
   const preview = latestMessagePreview([
     qqPreview ? { ...qqPreview, source: "qq", receivedAt: qqNotifications.previewReceivedAt ?? 0 } : null,
     wechatReminders.preview,
-    qqMail.preview ? { source: "qqMail", title: qqMail.preview.sender, body: qqMail.preview.subject, receivedAt: qqMail.previewReceivedAt ?? 0 } : null,
+    pluginPreview,
+    qqMail.preview ? { source: "qqMail", title: qqMail.preview.sender, body: qqMail.preview.subject, otpCode: qqMail.preview.otpCode, receivedAt: qqMail.previewReceivedAt ?? 0 } : null,
   ], latestPreviewAt);
   if (preview && preview.receivedAt > latestPreviewAt) setLatestPreviewAt(preview.receivedAt);
   const className = [
@@ -224,6 +230,7 @@ export function IslandShell({
           collapsedLabel={collapsedLabel}
           collapsedTaskTitle={collapsedTaskTitle}
           todoTimer={todoTimer}
+          todoRotation={todoRotation}
           collapsedTodoCount={collapsedTodoCount}
           collapsedItem={collapsedItem}
           collapsedLayout={collapsedLayout}

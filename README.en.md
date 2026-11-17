@@ -1,9 +1,7 @@
 <div align="center">
   <img src="src-tauri/icons/mark.svg" alt="Fly Island logo" width="96" height="96">
 
-  <h1>Fly Island</h1>
-
-  <p>English · <a href="README.md">中文</a></p>
+  <h1>fly-island</h1>
 
   <p>An ultra-lightweight Dynamic Island for Windows: WeChat, QQ, and email message display, Agent multi-session, quota ring display, music player, to-dos, clipboard, file transfer, and various other common features. Expand when needed, collapse when done.</p>
 
@@ -15,6 +13,8 @@
     <a href="https://github.com/flyl1u/fly-island/issues">Report an Issue</a>
     ·
     <a href="#community">Community</a>
+    ·
+    English · <a href="README.md">中文</a>
   </p>
 
   <p>
@@ -99,7 +99,7 @@ Join the **fly-island user group on WeChat** to discuss the app, report problems
   <img src="docs/assets/wechat-community.jpg" alt="QR code for the fly-island WeChat user group" width="360">
 </p>
 
-The QR code expires; the current image says it is **valid before November 18**. If it has expired, please [open an issue](https://github.com/flyl1u/fly-island/issues) to request an update.
+The QR code expires; the current image says it is **valid before November 23**. If it has expired, please [open an issue](https://github.com/flyl1u/fly-island/issues) to request an update.
 
 ## Development and build
 
@@ -156,3 +156,7 @@ If fly-island is useful to you, [a Star](https://github.com/flyl1u/fly-island/st
     <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=flyl1u/fly-island&type=date&theme=light&legend=top-left" />
   </picture>
 </a>
+
+### Plugin development
+
+Contributions are welcome. Start from the example, test locally and submit a PR using the [plugin quickstart](docs/plugins/quickstart.md).

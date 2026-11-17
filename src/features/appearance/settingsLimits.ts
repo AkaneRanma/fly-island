@@ -27,12 +27,16 @@ export const MIN_AGENT_VISIBLE_ROWS = 2;
 export const MAX_AGENT_VISIBLE_ROWS = 5;
 // File shelf cap; matches MAX_ITEMS in src-tauri/src/file_shelf/store.rs.
 export const DEFAULT_SHELF_ITEMS = 100;
+export const DEFAULT_AUTO_COPY_OTP = true;
 /**
  * Seconds the open island waits after the cursor leaves before it collapses (0 never), and the
  * seconds the collapsed island idles before it tucks into a line at the top edge. Both typed in.
  */
 export const AUTO_COLLAPSE_SECONDS = { min: 0, max: 600, default: 30 } as const;
 export const TUCK_DELAY_SECONDS = { min: 3, max: 600, default: 30 } as const;
+export const TODO_ROTATION_SECONDS = { min: 1, max: 60, default: 5 } as const;
+export const TODO_SCROLL_SPEED = { min: 10, max: 40, step: 5, default: 20 } as const;
+export const MESSAGE_PREVIEW_SECONDS = { min: 3, max: 30, step: 1, default: 5 } as const;
 /** Auto-cleanup choices for the file shelf, in days; 0 never cleans up. */
 export const SHELF_CLEANUP_DAYS = [0, 1, 7, 30] as const;
 export const DEFAULT_TASK_TEXT_COLOR = "#FFFFFF";

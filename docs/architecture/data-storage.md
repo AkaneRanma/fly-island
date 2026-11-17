@@ -14,7 +14,7 @@
 | 交流群红点 | 同一 `localStorage`：`focusd-island-community-invite-seen`，点开「关于」里的用户交流群后写 `"true"`，各窗口靠 storage 事件同步。群二维码不存本地，每次点开从官网 `island.flyliu.org/community/wechat-group.jpg` 加载（微信每周换码，换官网上的图即可） | `features/updater/storage.ts`、`useCommunityInvite.ts` |
 | 锁定小岛位置、独立设置窗口 | 同一 WebView2 `localStorage`：`focusd-island-settings.positionLocked`（默认 false）、`focusd-island-detached-settings`（缺失时默认 `"true"`，保留已保存的选择） | `features/appearance/storage.ts`、`windows/settings/storage.ts` |
 | 待办、以后的待办、每日笔记、归档、正在进行的待办、待办日期 | WebView2 的 `localStorage`（`focusd-island-todos` 等 key，见 [contracts.md](contracts.md)） | `features/todos/storage.ts` |
-| 待办倒计时与各项时长 | 同一 `localStorage`：`focusd-island-todo-timer` 保存 `{ todoId, endsAt, durationMinutes, notified }`，以结束时间恢复剩余秒数；`focusd-island-todo-durations` 按待办 id 保存 1–240 的整数分钟（没有记录按 15 分钟；旧的共用 `focusd-island-todo-duration` 不再读取）。首次到时前保存通知标记，重启不重复响；旧待办和进行中 ID 的格式不变 | `features/todos/storage.ts`；计算在 `timer.ts`，生命周期在 `useTodoTimer.ts` |
+| 待办倒计时与各项时长 | 同一 `localStorage`：`focusd-island-active-todos` 保存全部活动 ID，`focusd-island-todo-timers` 保存各项 `{ todoId, endsAt, durationMinutes, notified }`；以结束时间恢复剩余秒数。新键缺失时兼容旧单任务键，并继续把主任务同步到原格式的 `focusd-island-active-todo`、`focusd-island-todo-timer`。`focusd-island-todo-durations` 按待办 id 保存 1–240 的整数分钟（没有记录按 15 分钟；旧共用时长键不再读取）。首次到时前保存通知标记，重启不重复响；详情见 [contracts.md](contracts.md) | `features/todos/storage.ts`；计算在 `timer.ts`，生命周期在 `useTodoTimer.ts` |
 | AI 代理状态与运行标记、hook 脚本 | 应用数据目录（`agent-status.json`、`agent-*-running*.flag`、`focusd-agent-*.{cmd,ps1}`；`agent-sessions/<会话 ID>.json` 是 SessionStart / SessionEnd 钩子（`focusd-agent-session.ps1`）记下的会话进程、启动时间、终端和结束原因，优先于 Claude Code 未公开的 `~/.claude/sessions`；`agent-codex-notification.json` 是 Codex PermissionRequest 钩子的输入，用于判断 Codex 会话是否在等待确认；`agent-sessions-seen.json` 记下见过的会话的进程、启动时间、所在程序和 Orca 终端，保留两天，用于 `/clear`、结束后的会话找回窗口；`agent-focus.log` 是点击会话切换窗口的排查日志（只有步骤和程序名）；`agent-terminals/<Orca 终端 handle>.json` 为 Claude Code SessionStart hook 的输入，只在 Orca 终端里写，用来从会话切到它的 Orca 标签；`agent-claudeCode-notification.json` 为 Claude Code 最近一次"等待授权 / 等待输入"通知的 hook 输入，只用于判断会话是否在等你，清除状态时删除；旧版保存的 `agent-*-hook-input.json` 在安装/修复时删除；`agent-remote-hosts.json` 是设置 → AI Agent → 远程电脑里打开的主机，以及在那一页添加的主机（`custom`：名称、用户名、地址、端口；岛屿不改 `~/.ssh/config`）；`remote-sessions/<Host>/` 是从这些机器读来的会话文件节选，按家目录结构存放、保留远端修改时间，离开会话时间窗口的文件在下次读取时删除） | `agent_status`（会话列表在 `sessions.rs`、`session_scan.rs`，等待判断在 `notifications.rs`，远程机器在 `remote_hosts.rs`、`remote_fetch.rs`、`remote_sessions.rs`，标题与提问文字处理在 `title.rs`） |
 | 文件中转列表（只存路径，不复制文件） | 应用数据目录（`file-shelf.json`） | `file_shelf` |
 | 设置窗口上次关闭时的大小与位置（位置已不在任何屏幕上时忽略） | 应用数据目录（`settings-window.json`） | `settings_window/bounds.rs` |
@@ -35,6 +35,8 @@
 
 总览见 [overview.md](overview.md)。
 
+歌词缓存仍在应用数据目录 `lyrics-cache/*.json`，增加可缺省的 `schemaVersion`。旧缓存可作为在线升级查询失败的后备，新的行级缓存与未找到结果一周后重试逐字来源；新键附加原始歌名、播放器 AUMID 和歌曲 ID，防止不同版本混用。歌曲文件自带的歌词（`library.rs` / `tagged.rs`）只读用户填的音乐文件夹，不写入音频文件或旁路 .lrc。酷狗客户端 INI / KRC、汽水 `SodaMusic/LunaCacheV2/entries.db` 只读，不创建数据库锁或写入第三方文件；限制见 [歌词源说明](../lyrics-sources.md)。
+
 DSH（issue #51）：`agent_status/dsh_sessions.rs` 只读 `%APPDATA%/dsh-desktop/harness` 的 `storages/session_projcache/sessions/*.json`、对应 `sessions/*/session-*/session.v{3,4}.jsonl.zstd` 的存在性，以及 `profiles/web/desktop-storage.json` 的当前会话。同时读取共享 ~/.dsh、anywhere Beta ~/.dsh-beta 及社区端保存的绝对目录选择，按会话 ID 去重；不再要求 Desktop profile；DataElement harness 是社区独立根。`dsh_credentials.rs` 只在请求内存中读取该根目录的 `.credentials.yaml`；`dsh_usage.rs` 向固定官方 HTTPS 接口读余额，结果缓存 5 分钟，只在内存保存。不增加持久化余额或会话副本，设置只增加原有 key 下的 `agentShowDsh`。完整来源与限制见 [DSH 接入说明](../deepseek-harness.md)。
 
 ## 播放器兼容性提示
@@ -46,3 +48,15 @@ DSH（issue #51）：`agent_status/dsh_sessions.rs` 只读 `%APPDATA%/dsh-deskto
 
 用户点击安装后才写入网易云目录的 `msimg32.dll` 和 `BETTERNCM_PROFILE`（默认 `C:\betterncm`）下的 `plugins/InfLink-rs.plugin`。卸载保留加载器生成的其他数据；只删除记录中且哈希未变化的文件。组件从 GitHub 运行时下载，不随安装包分发。
 
+
+## 插件 API v1
+
+原生应用数据目录下 `plugins-state.json` 保存安装清单、启用状态、非秘密插件 settings、开发模式与索引 URL；临时原子写文件 `plugins-state.json.tmp`。这是需要在前端启动前恢复进程的安装注册表，不扩展或迁移现有 focusd-island-settings。秘密存 Windows 凭据管理器 service `com.focusd.island.plugins`，account `<id>/<setting-key>`，只经 stdin 发给对应插件，不返回前端。
+
+`plugins/<id>/` 存经索引校验的包；`.staging-<id>` / `.backup-<id>` 只用于安装事务。`plugin-logs/<id>.log` 保存有限 stderr。额度、会话和通知仅在内存，停用清空，不落盘。开发目录路径记录在注册表，卸载不会删除开发目录。
+
+豆包独立登录取得的 Cookie 也写入凭据管理器 `doubao/cookie`。旧插件自己的 `%APPDATA%/com.focusd.island/plugins/doubao/cookie.txt` 仅在凭据保存成功后迁移并删除；不读取或修改用户日常浏览器 profile。
+
+仓库内 `artifacts/plugins/` 为忽略的 zip 与 plugins-index.json 构建产物；本地测试数据在 node_modules/.cache/plugin-tests/。插件 crate 的 target 不入库。
+
+索引下载/解析诊断写入同样约 1 MiB 上限的 `plugin-logs/catalog.log`；不记录 URL 认证信息。索引失败统一返回 `plugin_index_unavailable`，设置页按当前语言显示简短状态和重试，不回显底层错误。

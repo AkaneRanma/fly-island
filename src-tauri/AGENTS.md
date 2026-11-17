@@ -12,6 +12,7 @@ src-tauri/src/
 ├── island/                  # 主窗口：命令、窗口状态、几何计算、毛玻璃、鼠标穿透、贴边动画
 ├── agent_approval/          # 在岛上审批（B6 第 2 期）：127.0.0.1 上的审批端点（标准库 TcpListener，挂起时能发现 Agent 断开）、按会话排队、等待上限、agent-approval.json
 ├── agent_status/            # AI 代理状态：快照、运行标记、Codex / Claude Code hook 安装；hooks/ 为编入二进制的 hook 脚本；sound_packs.rs 为导入的音效包（应用数据目录的 sound-packs/）
+│                            #   codex_activity.rs：增量保存 rollout 的 turn 边界，fixtures/ 为脱敏的真实记录
 │                            #   reply_marker.rs：可选的回复状态标记（B9），增删 CLAUDE.md 里岛屿自己的那段说明、识别回复末行的标记
 │                            #   dsh_desktop.rs / dsh_sessions.rs / dsh_credentials.rs / dsh_usage.rs：DSH 桌面端本地会话检查点、只读凭据与官方余额查询
 │                            #   workbuddy_sessions.rs：WorkBuddy 桌面端本地会话记录；workbuddy_connection.rs / workbuddy_usage.rs：WorkBuddy 官网独立登录窗口、积分汇总与内存缓存
@@ -20,7 +21,7 @@ src-tauri/src/
 ├── file_shelf/              # 文件中转：路径列表（file-shelf.json）与命令；拖出调用 win32/ole.rs
 ├── media_control/           # diagnostics.rs：SMTC、进程、版本与网易云插件只读诊断
 ├── media_plugins/           # 网易云插件探测、固定清单下载校验、安装记录与受限提权安装 / 卸载
-├── lyrics/                  # 音乐页歌词：本地 .lrc 文件夹（local.rs）、LRCLIB（lrclib.rs，用户开启才联网）、按歌名歌手时长匹配（matching.rs），在线结果缓存在 lyrics-cache/
+├── lyrics/                  # 本地 LRC、LRCLIB、QQ QRC、网易 YRC、酷狗 KRC 缓存、汽水只读 LMDB/msgpackr；word_formats.rs 统一逐字格式，在线结果缓存在 lyrics-cache/
 ├── mail/                    # 邮箱（命令名仍为 *_qq_mail）：附件（attachments.rs）、命令、每个邮箱一个后台服务（accounts.rs）及其崩溃后重启（supervisor.rs）、IMAP 会话、正文与内嵌图片解析、凭据
 ├── qq_notifications/        # QQ 通知监听；repair-qq-notification-registration.ps1 编入二进制，也可手动运行
 ├── wechat_reminders/        # source.rs 统一微信进程解析、窗口选择和任务栏提醒（被示例复用）；可选的 UI Automation 摘要与 Qt 标志恢复
@@ -31,7 +32,7 @@ src-tauri/src/
 ├── notification_diagnostics.rs
 └── win32/                   # Win32 / COM 的安全封装，crate 中唯一允许 unsafe 的地方：window（窗口查询、枚举、前台切换）、
                              # message_window（隐藏消息窗口与安全的窗口过程）、hotkey、clipboard、shell_hook、input、
-                             # com（COM / WinRT 初始化守卫）、audio、ole（文件拖出）、process / process_times、registry、
+                             # com（COM / WinRT 初始化守卫）、audio、ole（文件拖出）、process / process_times、process_job（插件进程树退出清理）、registry、
                              # notification_state（前台是否有全屏程序）、shell_open（不弹系统错误框地打开协议）、
                              # task_switcher（让主窗口不进 Alt+Tab）、known_folder（下载文件夹等已知文件夹）、
                              # icon、chinese、process_env / process_tree / process_memory、file_version（exe 文件版本）、uia_tabs / uia_list、caption_close、taskbar
@@ -100,3 +101,5 @@ src-tauri/src/
 - clippy lint 在 `Cargo.toml` 的 `[lints.clippy]` 中声明（`undocumented_unsafe_blocks`、`unwrap_used`、`expect_used` 为 deny），测试代码的放行写在 `clippy.toml`；不要在源文件中用 `#![warn]` / `#[allow]` 重复声明这些 lint。`cargo clippy --all-targets` 保持 0 告警；个别确实无法消除的默认 lint（例如参数即 IPC 契约的命令触发 `too_many_arguments`）在该项上用带 `reason` 的 `#[expect(...)]`。
 - 验证：`cargo test --manifest-path src-tauri/Cargo.toml` + `pnpm tauri build --no-bundle`。涉及窗口、托盘、注册表行为的改动，在风险需要时用 `pnpm tauri dev` 手动检查折叠态、展开态、贴边收起和托盘隐藏。
 - 成功生成 release 可执行文件后，按根目录规则同步桌面快捷方式。
+
+插件 API v1：`plugin_host/` 为 manifest / protocol / packages / storage / process / service 分层，插件源码在仓库 `plugins/<id>/` 独立 crate；这些 crate 不加入主程序 workspace。新增插件不能把网络、数据库或客户端依赖引入主程序。

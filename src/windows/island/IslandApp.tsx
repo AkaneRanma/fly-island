@@ -36,6 +36,8 @@ import { useIdleUpdateInstall } from "../../features/updater/useIdleUpdateInstal
 import { useIslandTranslation } from "./useIslandTranslation";
 import { useMessageView } from "./useMessageView";
 import { useSettingsPageHeight } from "./useSettingsPageHeight";
+import { useIslandPickerOpen } from "../../lib/islandPicker";
+import { TODO_DATE_PICKER_EXPANDED_ISLAND_HEIGHT } from "./layout";
 // Must stay the last import: IslandApp.css overrides the feature styles above.
 import "./IslandApp.css";
 
@@ -68,18 +70,19 @@ export function IslandApp() {
     quiet: game.quiet,
     canPopUp: !game.quiet && mode === "collapsed" && !isTucked,
   });
-  const { todos, activeTodoId, timer, todoPageMode, todoListHeight, notebookProps } = useIslandTodos({ settings, navigation, quiet: game.quiet });
+  const { todos, activeTodoId, activeTodoIds, timer, timers, todoPageMode, todoListHeight, notebookProps } = useIslandTodos({ settings, navigation, quiet: game.quiet });
 
   const songPlaying = settings.musicEnabled && media.mediaState.playbackStatus === "playing" && Boolean(media.mediaState.title);
   const cover = settings.collapsedShowCover && songPlaying ? media.mediaState.thumbnail : null;
-  const { collapsedTaskTitle, collapsedTodoCount, collapsedItem, collapsedIslandWidth } =
+  const { collapsedTaskTitle, collapsedTodoCount, collapsedItem, collapsedIslandWidth, todoRotation, collapsedTimer } =
     useCollapsedTodo(
       settings.todoEnabled ? todos : NO_TODOS,
       settings.todoEnabled ? activeTodoId : null,
       settings.todoEnabled ? settings : { ...settings, showIdleTodoCount: false },
       mode !== "collapsed" || isTucked || !settings.showCollapsedText || hasMessagePreview,
       agentSession?.title ?? null,
-      { lyricsPlaying: songPlaying, coverWanted: Boolean(cover), timer: settings.todoEnabled ? timer : null },
+      { lyricsPlaying: songPlaying, coverWanted: Boolean(cover), timer: settings.todoEnabled ? timer : null,
+        activeIds: settings.todoEnabled ? activeTodoIds : [], timers: settings.todoEnabled ? timers : [] },
     );
   // The cover goes with the lyric line: when something ranked above lyrics is shown, it goes too.
   const collapsedCover = collapsedItem === "lyrics" ? cover : null;
@@ -120,7 +123,8 @@ export function IslandApp() {
     collapseIsland,
   });
   const { fileShelf, isShelfDropping } = useIslandShelf(settings, navigation);
-  const expandedIslandHeight = getExpandedIslandHeight({
+  const pickerOpen = useIslandPickerOpen();
+  const expandedIslandHeight = Math.max(pickerOpen && page === "todo" ? TODO_DATE_PICKER_EXPANDED_ISLAND_HEIGHT : 0, getExpandedIslandHeight({
     page,
     todoPageMode,
     todos,
@@ -137,7 +141,7 @@ export function IslandApp() {
     agentAlertRowHeight: agentCardHeight,
     settingsContentHeight,
     shelfItems: fileShelf.items.length,
-  });
+  }));
   const scheme = useDocumentTheme(settings);
   const colors = useMemo(() => resolveSchemeColors(settings, scheme), [settings, scheme]);
   const stageStyle = useMemo(
@@ -207,7 +211,8 @@ export function IslandApp() {
         showTitle={settings.showTitle}
         showCollapsedText={settings.showCollapsedText}
         collapsedTaskTitle={collapsedTaskTitle}
-        todoTimer={settings.todoEnabled ? timer : null}
+        todoRotation={todoRotation}
+        todoTimer={settings.todoEnabled ? collapsedTimer : null}
         collapsedTodoCount={collapsedTodoCount}
         collapsedItem={collapsedItem}
         collapsedLayout={settings.collapsedLayout}

@@ -1,5 +1,8 @@
 # 待办
 
+- 待办轮换默认关闭。开启后在展开面板点“开始”保持展开，可开始多项；折叠岛在全部已开始、未完成的任务间按列表顺序轮换，删除“轮换条数”。切换沿用消息的一进一出上下动效；滚动使用单行连续向上的首尾循环，速度滑块为 10–40 像素/秒。每项计时独立，标题和其倒计时胶囊一起切换/滚动，复用原计时胶囊。岛高度不变，自动宽度按候选最宽标题与计时预留固定；减少动态效果时滚动静止显示第一条。消息预览和展开、贴边期间暂停轮换。（用户需求 2026-11-15）
+- 轮换开启时再次点击开始位置的停止按钮只停止该项；完成、删除亦只清理该项。关闭轮换保留最先开始的主任务，其余停止；此后沿用原单任务替换与开始后收起行为。（关闭时保留主任务为 Agent 实现决定）
+
 全局方向见 [DESIGN.md](../../DESIGN.md)。
 
 ## 深色列表
@@ -10,7 +13,8 @@
 
 ## 待办日期
 
-- 待办输入框右侧有日期按钮（默认"今天" / "Today"），点开系统日历选日期；选今天以后的日子时按钮变紫色，回车后待办进入"已安排"而不出现在今日列表，日期随之复位为今天。（上游 issue #30，用户确认）
+- 待办输入框右侧有日期按钮（默认"今天" / "Today"），点开岛内月历浮层选日期（使用自绘 React 浮层替代原生日历控件，避免抢走焦点触发岛屿失焦收起或被置顶岛遮挡）；选今天以后的日子时按钮变紫色，回车后待办进入"已安排"而不出现在今日列表，日期随之复位为今天。（上游 issue #30，用户确认；2026-11-15 自绘月历浮层与展开岛撑高/焦点抑制）
+- 浮层渲染在待办面板内，打开期间展开岛自动撑高至至少 440px 保证完整显示不被裁切；打开期间抑制 hover-out 收起、失焦收起、空闲收起与悬停焦点归还，点击外部或 Esc 关闭，关闭后恢复原岛屿高度与收起行为。支持上/下月切换、今天高亮、已选日期高亮、清除日期、键盘方向键切换日期，周起始与月份名随 i18n 语言（中文周一为首日）。（Agent 方案 2026-11-15）
 - 有已安排待办时，标题旁出现带数量的日历按钮，进入"已安排"（Upcoming）页按日期分组查看、删除；该页使用归档页的固定高度，不显示输入框。（Agent 推断）
 - 到期待办（日期不晚于今天，包括应用关闭期间错过的）在列表代表今天时并入顶部；列表还停在以前某天时先等跨天流程归档旧列表，再并入，避免被归档到旧日期。（Agent 推断）
 
@@ -33,12 +37,12 @@
 - 设置 → 待办增加“番茄钟”（`todoTimerEnabled`，默认关闭）。下述时长选择、倒计时和到时提醒仅在开启时启用；关闭时点开始直接开始/停止。关闭立即清除本轮倒计时，保留进行中任务，重新开启不恢复旧轮次。
 
 - 开启后“开始”左边有一个怀表图标（lucide `Timer`，22px 圆形透明按钮，打开时强调色）。“开始”只开始任务、不倒计时；只有怀表设置里的 ▶ 才开始倒计时（用户需求 2026-11-12）。每项待办各记各的时长，新待办都从 15 分钟起，改一项不影响别的；不再有“不限时”。点怀表在它上方弹出小的时间设置：一颗深色胶囊，里面是岛内版步进器（26px，−/+ 每次 5 分钟，1–240）、“分钟”和强调色圆形 ▶。它画在 stage 上而不是待办行里，滚动列表裁不到；上方放不下时改到下方。改动立即记住，Esc / 点别处 / 滚动关闭。（用户构想 2026-11-12：上一版“分成两半的胶囊 + 大卡片”太丑，已删除）
-- 开始后沿用原有收起岛屿和单个进行中待办的逻辑。折叠岛显示任务标题 + 小胶囊里的 `mm:ss`（18px 高，浅底，12px 600 字重，标题过长时省略号截断标题而不压缩胶囊）；列表里的开始按钮位置显示停止图标和 `mm:ss`（超过一小时仍按分钟，如 `240:00`）。（用户构想）
+- 轮换关闭时开始后收起岛屿，并保持单个进行中待办；开启时保持展开并支持多项。折叠岛显示任务标题 + 小胶囊里的 `mm:ss`（18px 高，浅底，12px 600 字重，标题过长时省略号截断标题而不压缩胶囊）；列表里的开始按钮位置显示停止图标和 `mm:ss`（超过一小时仍按分钟，如 `240:00`）。（用户构想）
 - 时间设置和到时操作使用原有深色、强调色与键盘焦点样式；每秒数字只在倒计时叶子组件内刷新。（Agent 推断）
-- 时间到保留任务未完成状态，显示“时间到 / 完成 / 再来一轮”。完成会勾选任务；再来一轮直接按本轮时长重新开始并收起岛屿。结束、完成、删除和开始另一项都会取消旧倒计时；不操作不会重复响。（用户需求）
+- 时间到保留任务未完成状态，显示“时间到 / 完成 / 再来一轮”。完成会勾选任务；再来一轮按该项时长重新开始，轮换开启时保持展开。结束、完成和删除只清除该项；轮换关闭时开始另一项取消旧倒计时。不操作不会重复响。（用户需求）
 - 到时操作区短暂淡入，上线后保持静止；减少动态效果时不播放动画。到时展开、贴边和托盘隐藏的约定见 [island.md](island.md)。（Agent 推断）
 
-English: With the timer on, a watch icon sits left of Start. Start counts down the current duration (15 min the first time); the watch opens a small setter above it with −/+ in steps of 5 (1–240) and a round start button. The collapsed island shows the task title and the countdown in a small pill. Timed rows show a stop icon and `mm:ss`. At expiry, “Time’s up”, “Complete”, and “Another round” remain available. Another round reuses the same duration. Stopping, completing, deleting, or starting another task cancels the old round.
+English: With the timer on, a watch icon sits left of Start. Start only starts the task; the watch opens a small setter with −/+ in steps of 5 (1–240, initially 15 min) and a timed start button. Rotation is off by default. When enabled, Start keeps the island expanded and adds a task to the running set. The collapsed island switches or scrolls through all started tasks, each with its own countdown pill. Stopping, completing or deleting affects only that task. Another round reuses its duration. Turning rotation off retains the primary task and restores the original single-task behavior.
 
 ## 尺寸
 

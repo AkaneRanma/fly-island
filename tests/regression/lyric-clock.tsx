@@ -32,7 +32,7 @@ async function render(title: string, active: boolean, durationMs = 0) {
     root.render(<StrictMode><CollapsedLyric active={active}
       mediaState={{ ...DEFAULT_MEDIA_STATE, title, artist: "artist", available: true, playbackStatus: "playing",
         durationMs, positionMs: 0, updatedAt: anchor }}
-      lyricsSettings={{ lyricsFolder: "", lyricsMusicFolder: "", lyricsOnline: true, lyricsOffsetMs: 0 }} /></StrictMode>);
+      lyricsSettings={{ lyricsFolder: "", lyricsMusicFolder: "", lyricsOnline: true, lyricWordFill: true, lyricsOffsetMs: 0 }} /></StrictMode>);
   });
 }
 function check(condition: unknown, message: string) {

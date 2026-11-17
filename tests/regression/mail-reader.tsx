@@ -10,6 +10,7 @@ import { useQQNotifications } from "../../src/features/messages/qq-notifications
 import { useWeChatReminders } from "../../src/features/messages/wechat/WeChatReminders";
 import { MessagesPanel, messagePanelHeight, type MessageView } from "../../src/features/messages/Messages";
 import "../../src/windows/island/IslandApp.css";
+import { MAIL_OTP_ENABLED } from "../../src/features/releaseFlags.ts";
 
 Object.assign(globalThis, { isTauri: true, IS_REACT_ACT_ENVIRONMENT: true });
 const params = new URLSearchParams(location.search);
@@ -22,6 +23,7 @@ keys.forEach(key => localStorage.removeItem(key));
 const calls: { command: string; args: Record<string, unknown> }[] = [];
 let revision = 0;
 let canOpenChat = true;
+let copyFails = false;
 let mail: MailController;
 let view: MessageView;
 let setView: (source: MessageView) => void;
@@ -32,6 +34,7 @@ let snapshot: MailSnapshot = {
   unreadCount: state === "disconnected" ? null : state === "empty" ? 0 : 3, items: state === "empty" || state === "disconnected" ? [] : Array.from({ length: 12 }, (_, index) => ({
     id: `7:${20 - index}`, uid: 20 - index, sender: index === 0 ? "产品团队 <team@example.com>" : `协作团队 ${index}`,
     subject: index === 0 ? "项目周报与下周安排" : `工作进展 ${index}`, receivedAt: now - index * 60_000, unread: index < 3,
+    otpCode: index === 1 ? "834921" : undefined,
   })), lastSyncedAt: now, error: state === "auth" ? "授权码已失效，请重新连接。" : null,
 };
 
@@ -39,6 +42,7 @@ mockIPC((command, payload) => {
   const args = (payload ?? {}) as Record<string, unknown>;
   calls.push({ command, args });
   switch (command) {
+    case "copy_mail_otp": if (copyFails) throw new Error("Clipboard is busy"); return;
     case "get_qq_mail_state": return snapshot.configured || snapshot.status !== "disconnected" ? [snapshot] : [];
     case "read_qq_mail": return readBehavior(String(args.messageId));
     case "disconnect_qq_mail": snapshot = { ...snapshot, revision: ++revision, configured: false, enabled: false, status: "disconnected", items: [], unreadCount: null }; return snapshot;
@@ -155,6 +159,22 @@ try {
     check(view! === "qq" && document.querySelector('[aria-label="QQ 最近通知"]'), "切回 QQ 显示自己的通知列表");
     checkCards();
     await click("邮箱");
+    check(!calls.some(call => call.command === "copy_mail_otp"), "初次加载带验证码的旧列表不会自动复制");
+    if (MAIL_OTP_ENABLED) {
+      const otp = document.querySelector<HTMLButtonElement>(".qq-mail-item__otp .mail-otp-code")!;
+      await act(async () => otp.click());
+      check(calls.some(call => call.command === "copy_mail_otp" && call.args.code === "834921") && otp.dataset.copied === "true"
+        && !mail!.selectedMail, "列表验证码点击即复制并显示对勾，不打开正文");
+      copyFails = true;
+      await act(async () => otp.click());
+      check(document.querySelector(".qq-panel__error")?.textContent?.includes("验证码复制失败") && !otp.dataset.copied,
+        "复制失败时就地反馈，不残留成功对勾");
+      copyFails = false;
+      await act(async () => otp.click());
+      check(!document.querySelector(".qq-panel__error"), "手动重试成功后清除复制错误");
+    } else {
+      check(!document.querySelector(".mail-otp-code, .qq-mail-item__otp"), "旧快照含验证码时也不显示胶囊或额外空白");
+    }
     const list = document.querySelector<HTMLDivElement>('.qq-mail-list')!;
     list.scrollTop = 120;
     list.dispatchEvent(new Event("scroll", { bubbles: true }));
@@ -203,6 +223,13 @@ try {
     await click("返回列表");
     readBehavior = async id => ({ id, attachments: [], contentType: "text/plain", content: "第二封正文" });
     await click("阅读邮件：工作进展 1，未读");
+    if (MAIL_OTP_ENABLED) {
+      const readerOtp = document.querySelector<HTMLButtonElement>(".qq-mail-reader .mail-otp-code")!;
+      await act(async () => readerOtp.click());
+      check(readerOtp.textContent?.includes("834921") && readerOtp.dataset.copied === "true", "阅读页顶部可复制验证码并显示对勾");
+    } else {
+      check(!document.querySelector(".qq-mail-reader .mail-otp-code"), "关闭时阅读页不显示验证码");
+    }
     await act(async () => { stale.resolve({ id: "7:20", attachments: [], contentType: "text/plain", content: "过期的第一封正文" }); await stale.promise; });
     check(mail!.selectedMail?.id === "7:19" && mail!.content?.content === "第二封正文", "快速返回和切换后，旧请求不会覆盖当前邮件");
 

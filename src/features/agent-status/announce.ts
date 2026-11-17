@@ -1,5 +1,6 @@
 import type { AgentSessionSummary } from "./api";
 import { sessionKey } from "./unseen.ts";
+import { announcedEnding } from "./sessionLight.ts";
 
 /**
  * When a session's change is worth a sound or a pop-up: the user's own task finished, a wait on
@@ -34,7 +35,7 @@ export const announceTiming = { completeMs: COMPLETE_SETTLE_MS, waitMs: WAIT_SET
 export const QUESTION_TOOL = "AskUserQuestion";
 
 type Prompted = Pick<AgentSessionSummary, "turnStartedAt" | "ownerPromptAt">;
-type Turn = Pick<AgentSessionSummary, "provider" | "sessionId" | "phase"> & Prompted;
+type Turn = Pick<AgentSessionSummary, "provider" | "sessionId" | "phase" | "lastCompletedAt" | "replyMarker" | "backgroundTasks"> & Prompted;
 type Wait = Pick<AgentSessionSummary, "provider" | "sessionId" | "phase" | "currentTool">;
 
 /** What has been announced: the typed prompt each finished turn was announced for, and when each session's last approval was. */
@@ -42,6 +43,16 @@ export type Announced = { finished: Map<string, number | null>; approvals: Map<s
 
 export function emptyAnnounced(): Announced {
   return { finished: new Map(), approvals: new Map() };
+}
+
+function boundAnnouncements(announced: Announced) {
+  for (const history of [announced.finished, announced.approvals]) {
+    while (history.size > 2048) {
+      const key = history.keys().next().value;
+      if (key === undefined) break;
+      history.delete(key);
+    }
+  }
 }
 
 /**
@@ -66,9 +77,13 @@ export function settledFinishes<T extends Turn>(pending: T[], current: Turn[], a
     const key = sessionKey(session);
     const latest = now.get(key);
     if (latest?.phase !== "completed" || !isUsersTurn(latest)) return false;
+    if (announcedEnding(latest) === "background") return false;
+    // An older timer must not announce a newer turn that has not yet settled for six seconds.
+    if (session.lastCompletedAt !== latest.lastCompletedAt || session.turnStartedAt !== latest.turnStartedAt || session.ownerPromptAt !== latest.ownerPromptAt) return false;
     const prompt = latest.ownerPromptAt ?? latest.turnStartedAt ?? null;
     if (prompt !== null && announced.finished.get(key) === prompt) return false;
-    if (prompt !== null) announced.finished.set(key, prompt);
+    if (prompt !== null) { announced.finished.delete(key); announced.finished.set(key, prompt); }
+    boundAnnouncements(announced);
     return true;
   });
 }
@@ -87,7 +102,9 @@ export function settledWaits<T extends Wait>(pending: T[], current: Wait[], anno
     if (still.currentTool?.name === QUESTION_TOOL) return true;
     const last = announced.approvals.get(key);
     if (last !== undefined && now - last < repeatMs) return false;
+    announced.approvals.delete(key);
     announced.approvals.set(key, now);
+    boundAnnouncements(announced);
     return true;
   });
 }

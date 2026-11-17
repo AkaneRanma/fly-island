@@ -1,6 +1,6 @@
 # 架构总览
 
-本文描述 FocuSD Island 的运行时架构、目标代码结构、从现有文件到目标位置的迁移映射，以及对外契约清单。编码规则见 [AGENTS.md](../../AGENTS.md)、[src/AGENTS.md](../../src/AGENTS.md) 和 [src-tauri/AGENTS.md](../../src-tauri/AGENTS.md)，迁移步骤见 [refactor-plan.md](refactor-plan.md)，插件系统提案见 [plugins.md](plugins.md)。
+本文描述 FocuSD Island 的运行时架构、目标代码结构、从现有文件到目标位置的迁移映射，以及对外契约清单。编码规则见 [AGENTS.md](../../AGENTS.md)、[src/AGENTS.md](../../src/AGENTS.md) 和 [src-tauri/AGENTS.md](../../src-tauri/AGENTS.md)，迁移步骤见 [refactor-plan.md](refactor-plan.md)，插件 API v1 架构见 [plugins.md](plugins.md)（进程树清理由 `win32/process_job.rs` 封装）。
 
 ## 运行时架构
 
@@ -21,6 +21,10 @@
 ```
 
 各项数据存在哪里见 [data-storage.md](data-storage.md)。
+
+根目录 `release-features.json` 是前端与 Rust 的发布功能开关单一来源：`plugins`、`mailOtp` 当前均关闭。前端通过 `features/releaseFlags.ts` 读取，`src-tauri/build.rs` 将同一配置转为编译期 cfg，由 `release_flags.rs` 导出常量。关闭时保留旧数据与 IPC 契约，插件宿主不启动进程、请求索引或修改配置，邮箱同步不提取验证码或为此请求正文，复制入口也不运行。每项仅改 JSON 中对应的一个值并重新构建即可恢复。回归运行器分别启动正式配置和开启保留功能的 Vite 测试实例；测试覆盖不通过生产运行时开关实现。
+
+Codex 的会话展示仍由 `agent_status/session_scan.rs` 读取 rollout 尾部；`codex_activity.rs` 在内存中增量保存完整文件的 turn 边界、用户提示时间和最后完成时间，避免长上下文把开始记录挤出尾部。按文件修改时间扫描所有日期目录，兼容旧目录中恢复的会话。前端 `features/agent-status/completion.ts` 统一判定显式完成时间变化，供弹出与声音使用。无新增持久化文件。实测与限制见 [Codex 会话排查记录](../investigations/codex-thinking-sessions-2026-11-15.md)。
 
 Agent 的 DSH 桌面端来源由 `agent_status/dsh_sessions.rs`（只读本地检查点、合并去重、宿主聚焦）、dsh_desktop.rs（官方与社区宿主识别、目录发现）、`dsh_credentials.rs`（受限凭据读取）和 `dsh_usage.rs`（官方余额只读查询与内存缓存）承担；从现有会话命令和聚焦命令接入，余额有独立的 `get_dsh_usage` 命令。前端仍在 `features/agent-status/`，余额展示在 `DshQuotaRing.tsx`，纯逻辑在 `dshUsage.ts`。详见 [DSH 接入说明](../deepseek-harness.md)。
 
@@ -47,6 +51,8 @@ main.tsx → windows/ → features/ → components/、lib/、utils/、i18n/、st
 - [migration-map.md](migration-map.md)：结构重构时旧文件到新位置的对照
 
 ## 媒体诊断与本地校准
+
+歌词源位于 `lyrics/`：歌曲文件自带的歌词（`library.rs` 按歌名找到播放中的文件，`tagged.rs` 读它写的标签或同名的 .lrc）、QQ 专属接口与 QRC 解密（`qqmusic.rs` / `qrc_cipher.rs`）、酷狗原生缓存（`kugou_cache.rs`）、汽水只读 LMDB 快照和 msgpackr 解码（`soda_cache.rs` / `soda_lmdb.rs` / `soda_msgpack.rs`）、网易 YRC 与共享逐字格式转换（`word_formats.rs`），统一输出增强 LRC。来源顺序、兼容缓存与限制见 [歌词源说明](../lyrics-sources.md)。
 
 `media_control/diagnostics.rs` 只读枚举 SMTC 会话及已知播放器进程，复用 `timeline.rs` 的可信时间戳判断和 `win32/process*.rs` 的安全进程查询，文件版本读取封装在 `win32/file_version.rs`。前端 `useMediaDiagnostics.ts` 按打开面板、切换播放器与媒体事件触发五秒节流刷新，独立于媒体轮询；`MediaDiagnosticsCard` 和 `MediaCompatibilitySection` 分别显示面板提示及设置行。无时间线的歌词点击通过 `useMediaState.calibrate` 校准 `trackClock`，不改变播放器状态与 `positionAnchor`。
 - `src-tauri/src/media_plugins/`：网易云精准进度插件的只读探测、固定版本下载校验、显式安装 / 卸载与安装记录；受限提权调用封装在 `win32/media_plugin_elevation.rs`，注册表探测封装在 `win32/media_plugin_registry.rs`。

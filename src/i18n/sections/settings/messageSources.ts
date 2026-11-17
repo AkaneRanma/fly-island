@@ -1,11 +1,17 @@
 export type SettingsMessageSourcesText = {
+  previewTitle: string;
+  previewSeconds: string;
   qqTitle: string;
   qqHint: string;
   wechatTitle: string;
   wechatHint: string;
+  autoCopyOtp: string;
 };
 
 export const zhCN: SettingsMessageSourcesText = {
+  previewTitle: "岛上通知",
+  previewSeconds: "停留时长",
+  autoCopyOtp: "自动复制验证码",
   qqTitle: "QQ 通知",
   qqHint: "通过 Windows 通知读取 QQ 消息的标题和预览，只保留在本次运行的内存中。需要 QQ 已登录并开启系统通知。",
   wechatTitle: "微信提醒",
@@ -13,6 +19,9 @@ export const zhCN: SettingsMessageSourcesText = {
 };
 
 export const en: SettingsMessageSourcesText = {
+  previewTitle: "Island notifications",
+  previewSeconds: "Display duration",
+  autoCopyOtp: "Auto-copy verification codes",
   qqTitle: "QQ notifications",
   qqHint: "Reads the title and preview of QQ messages from Windows notifications and keeps them in memory for this run only. QQ must be signed in with system notifications on.",
   wechatTitle: "WeChat reminders",

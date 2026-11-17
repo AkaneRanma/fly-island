@@ -11,8 +11,8 @@
   white-space: nowrap;
 }
 
-/* Word-by-word lyrics: the line keeps the island's text colour, and the words still to be sung
-   are dimmer, so the bright edge moves along it. */
+/* Word-by-word lyrics: the line keeps the island's task text colour, and the words still to be
+   sung are dimmer, so the bright edge moves along it (SungWords sets the delay and duration). */
 .collapsed-lyric .sung-word {
   --sung-word-on: var(--task-text-color);
   --sung-word-off: color-mix(in srgb, var(--task-text-color) 40%, transparent);
