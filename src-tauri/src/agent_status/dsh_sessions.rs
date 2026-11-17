@@ -13,6 +13,7 @@ use std::{
 };
 
 use serde_json::Value;
+use windows::Win32::Foundation::HWND;
 
 use super::{focus_log::Attempt, markers::AGENT_RUNNING_STALE_AFTER_MS, session_host::SessionHost,
     sessions::AgentSessionSummary, snapshot::system_time_to_unix_millis, title::{folder_title, shorten},
@@ -25,6 +26,15 @@ const MAX_CHECKPOINTS: usize = 512;
 const WEB_URL_FILES: &[&str] = &["url.txt", "plain-url.txt"];
 const MAX_WEB_URL_BYTES: u64 = 8 * 1024;
 const WEB_PROBE_TIMEOUT: Duration = Duration::from_millis(150);
+/// Browsers whose window titles and tabs are inspected before another copy of the page is opened.
+const BROWSERS: &[&str] = &["chrome", "msedge", "firefox", "brave", "vivaldi", "opera", "arc"];
+/// Titles of the page the recorded address serves. They are not read back from the host: the
+/// recorded address carries a launch token that has already been exchanged for a browser cookie, and
+/// a plain GET is answered with 401 (browser-auth.ts authorizeIndex), so the titles are known here.
+const DSH_PAGE_TITLES: &[&str] = &["DeepSeek Harness"];
+/// Tabs of at most this many browser windows are listed; UI Automation costs about a second each.
+const MAX_TAB_WINDOWS: usize = 3;
+const WINDOW_TITLE_UNITS: usize = 512;
 type CachedJson = ((u64, Option<SystemTime>), Value);
 static CHECKPOINTS: Mutex<Option<HashMap<PathBuf, CachedJson>>> = Mutex::new(None);
 pub(super) const DESKTOP_APPS: &[&str] = super::dsh_desktop::APPS;
@@ -219,7 +229,8 @@ pub(super) fn web_entry_url(text: &str) -> Option<String> {
 /// moved to another port) must not swallow the click.
 fn web_host_alive(url: &str) -> bool {
     let Some((_, rest)) = url.split_once("://") else { return false };
-    let Some((authority, _)) = rest.split_once('/') else { return false };
+    // A recorded address may be just the origin ("http://127.0.0.1:58527"), so the path is optional.
+    let authority = rest.split_once('/').map_or(rest, |(authority, _)| authority);
     let Some((host, port)) = authority.rsplit_once(':') else { return false };
     let Ok(port) = port.parse::<u16>() else { return false };
     let reachable = |address: SocketAddr| TcpStream::connect_timeout(&address, WEB_PROBE_TIMEOUT).is_ok();
@@ -228,8 +239,16 @@ fn web_host_alive(url: &str) -> bool {
     if host == "127.0.0.1" { reachable(v4) } else { reachable(v4) || reachable(v6) }
 }
 
+/// Whether a recorded address replaces the one already chosen. A tie keeps the earlier file:
+/// `url.txt` is listed first and carries the login token, so `plain-url.txt` written in the same
+/// second must not displace it.
+fn fresher(known: Option<&SystemTime>, stamp: SystemTime) -> bool {
+    known.is_none_or(|known| *known < stamp)
+}
+
 /// The newest recorded web address under any known DSH store that still answers. `url.txt` carries
-/// the login token, so it is only read, never copied into the log or the session list.
+/// the login token, so it is only read, never copied into the log or the session list. A stale
+/// address (the host moved to another port) is skipped instead of swallowing the click.
 fn stored_web_url(home: &Path, appdata: Option<PathBuf>) -> Option<String> {
     let mut newest: Option<(SystemTime, String)> = None;
     for (root, _) in super::dsh_desktop::roots(home, appdata) {
@@ -240,28 +259,81 @@ fn stored_web_url(home: &Path, appdata: Option<PathBuf>) -> Option<String> {
             let mut text = String::new();
             if file.take(MAX_WEB_URL_BYTES + 1).read_to_string(&mut text).is_err() { continue; }
             let Some(url) = web_entry_url(&text) else { continue };
+            if !web_host_alive(&url) { continue; }
             let stamp = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
-            if newest.as_ref().is_none_or(|(known, _)| *known <= stamp) {
+            if fresher(newest.as_ref().map(|(known, _)| known), stamp) {
                 newest = Some((stamp, url));
             }
         }
     }
-    newest.map(|(_, url)| url).filter(|url| web_host_alive(url))
+    newest.map(|(_, url)| url)
+}
+
+/// Whether a window or tab title belongs to the page the recorded address serves.
+fn shows_page(title: &str) -> bool {
+    DSH_PAGE_TITLES.iter().any(|known| title.contains(known))
+}
+
+/// The browser window already showing the page, brought forward with its tab selected. Chrome and
+/// Edge open another tab for the same address on every ShellExecute, which is what piled them up.
+fn focus_page() -> bool {
+    let mut windows: Vec<(HWND, bool)> = Vec::new();
+    let _ = win32::window::for_each_top_level_window(|window| {
+        if !win32::window::is_visible(window) || win32::window::has_owner(window) { return; }
+        let Some(exe) = win32::process::image_path(win32::process::window_process_id(window)) else { return };
+        if !BROWSERS.contains(&super::window_focus::app_name(&exe).as_str()) { return; }
+        windows.push((window, shows_page(&win32::window::window_text(window, WINDOW_TITLE_UNITS))));
+    });
+    // The title of a browser window names its front tab, so this covers the common case for free.
+    if let Some(&(window, _)) = windows.iter().find(|(_, front)| *front) {
+        bring_forward(window);
+        return true;
+    }
+    // The page may sit behind another tab: look through the tabs of the remaining browser windows.
+    let candidates: Vec<HWND> = windows.iter().filter(|(_, front)| !*front).take(MAX_TAB_WINDOWS)
+        .map(|(window, _)| *window).collect();
+    for window in candidates {
+        if win32::uia_tabs::select_tab(window, |names| names.iter().position(|name| shows_page(name))) {
+            bring_forward(window);
+            return true;
+        }
+    }
+    false
+}
+
+/// Brings `window` to the front without stealing the keyboard focus from an unrelated program.
+fn bring_forward(window: HWND) {
+    win32::window::restore_minimized(window);
+    win32::window::allow_set_foreground_window(win32::process::window_process_id(window));
+    if !win32::window::force_foreground(window) {
+        win32::window::flash(window);
+    }
+}
+
+/// Focuses the browser already showing the recorded page, else opens its address in a new one.
+fn open_recorded_page(url: &str) -> Option<&'static str> {
+    if focus_page() {
+        return Some("web=focused");
+    }
+    win32::shell_open::open_url_without_ui(url).then_some("web=opened")
 }
 
 /// Brings a DSH desktop window forward. When the desktop window is closed and DSH serves the web UI
-/// in a browser instead (see docs/deepseek-harness.md), opens that recorded address: the page has no
-/// stable per-conversation route, so this lands on the same session the browser showed last.
+/// in a browser instead (see docs/deepseek-harness.md), focuses the browser tab already showing it
+/// and only opens the address when none does: the page has no stable per-conversation route, so it
+/// lands on the session the browser showed last.
 pub(super) fn focus_desktop(app_dir: Option<&Path>, id: Option<&str>) -> bool {
     let mut log = Attempt::new("dsh", id);
     let home = crate::system::windows_home_dir().ok();
-    let owner = home.as_deref().and_then(|home| {
+    let windows = super::dsh_desktop::windows();
+    log.note(format!("windows={}", windows.len()));
+    // Reading every conversation takes seconds and only names the executable of a desktop window:
+    // skip it entirely when DSH runs as a web host, which is the case that reaches the fallback.
+    let owner = home.as_deref().filter(|_| !windows.is_empty()).and_then(|home| {
         list_sessions(home, super::snapshot::current_unix_millis(), i64::MAX)
             .into_iter().find(|session| Some(session.session_id.as_str()) == id)
             .and_then(|session| session.host).and_then(|host| host.exe)
     });
-    let windows = super::dsh_desktop::windows();
-    log.note(format!("windows={}", windows.len()));
     let focused = super::dsh_desktop::preferred_window(&windows, owner.as_deref())
         .and_then(|index| windows.get(index))
         .is_some_and(|(_, pid)| window_focus::focus_session_window(&SessionHints::default(), &[*pid], None).is_some());
@@ -271,10 +343,14 @@ pub(super) fn focus_desktop(app_dir: Option<&Path>, id: Option<&str>) -> bool {
         return true;
     }
     let url = home.and_then(|home| stored_web_url(&home, env::var_os("APPDATA").map(PathBuf::from)));
-    let opened = url.is_some_and(|url| win32::shell_open::open_url_without_ui(&url));
-    log.note(if opened { "web=opened" } else { "web=none" });
-    log.finish(app_dir, if opened { "web" } else { "not found" });
-    opened
+    let outcome = url.and_then(|url| open_recorded_page(&url));
+    log.note(outcome.unwrap_or("web=none"));
+    log.finish(app_dir, match outcome {
+        Some("web=focused") => "focused",
+        Some(_) => "web",
+        None => "not found",
+    });
+    outcome.is_some()
 }
 
 /// Do not mark every desktop conversation as read merely because the app is foreground.

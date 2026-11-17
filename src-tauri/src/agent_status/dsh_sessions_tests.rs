@@ -129,3 +129,31 @@ fn accepts_only_loopback_web_addresses() {
     assert_eq!(web_entry_url("http://127.0.0.1:58527/?token=a b"), None);
     assert_eq!(web_entry_url(""), None);
 }
+
+#[test]
+fn a_recorded_address_keeps_the_earlier_file_when_both_are_equally_old() {
+    let stamp = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+    assert!(fresher(None, stamp));
+    // url.txt (the one carrying the token) is listed first; plain-url.txt written in the same
+    // second must not take its place.
+    assert!(!fresher(Some(&stamp), stamp));
+    assert!(fresher(Some(&stamp), stamp + Duration::from_secs(1)));
+}
+
+#[test]
+fn an_origin_without_a_path_still_answers_the_liveness_probe() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("fixture listener");
+    let port = listener.local_addr().expect("fixture address").port();
+    assert!(web_host_alive(&format!("http://127.0.0.1:{port}")));
+    assert!(web_host_alive(&format!("http://127.0.0.1:{port}/?token=abc")));
+    drop(listener);
+    assert!(!web_host_alive(&format!("http://127.0.0.1:{port}")), "a closed host is not opened");
+}
+
+#[test]
+fn recognises_the_recorded_page_by_its_window_or_tab_title() {
+    assert!(shows_page("灵动岛效果对比 — DeepSeek Harness - Google Chrome"));
+    assert!(shows_page("DeepSeek Harness"));
+    assert!(!shows_page("GitHub — Mozilla Firefox"));
+    assert!(!shows_page(""));
+}
