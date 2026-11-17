@@ -82,15 +82,15 @@ if (preview) {
   const expanded = document.querySelector<HTMLElement>(".lyrics-view .sung-word");
   check(Boolean(expanded) && Math.abs(Number.parseFloat(getComputedStyle(expanded!).backgroundPositionX) - (reduced ? 0 : 50)) < 1,
     "展开态逐字歌词在当前词中间显示填充");
-  check(!normalizeSettings({ lyricWordFill: false }).lyricWordFill && !normalizeSettings({}).lyricWordFill && normalizeSettings({ lyricWordFill: true }).lyricWordFill,
-    "旧存档默认关闭，明确开启后保持开启");
+  check(!normalizeSettings({ lyricWordFill: false }).lyricWordFill && normalizeSettings({}).lyricWordFill && normalizeSettings({ lyricWordFill: true }).lyricWordFill,
+    "旧存档默认开启，明确关闭后保持关闭");
   let saved = DEFAULT_SETTINGS;
   await act(async () => root.render(<I18nProvider><LyricsSettingsSection settings={saved} onSettingsChange={(value) => { saved = value; }} /></I18nProvider>));
   const row = [...document.querySelectorAll<HTMLElement>(".settings-row")].find((r) => r.textContent?.includes("逐字歌词填充"));
   const toggle = row?.querySelector<HTMLInputElement>("[role='switch']");
-  check(toggle?.checked === false, "音乐设置复用现有开关行，默认关闭");
+  check(toggle?.checked === true, "音乐设置复用现有开关行，默认开启");
   await act(async () => toggle?.click());
-  check(saved.lyricWordFill === true, "设置开关传回明确开启值");
+  check(saved.lyricWordFill === false, "设置开关传回明确关闭值");
   results.dataset.result = "passed"; results.textContent = passed.join("\n");
 } catch (error) {
   results.dataset.result = "failed"; results.textContent = `${passed.join("\n")}\nFAIL ${String(error)}`;

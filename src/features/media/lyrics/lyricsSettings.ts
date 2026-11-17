@@ -11,14 +11,15 @@ export type LyricsSettingValues = {
 
 /**
  * No folders, no offset; lyrics are looked up online, Kugou and NetEase included, unless the user
- * turns that off (on by default since 2026-11-10: lyrics are what makes the music page).
+ * turns that off (on by default since 2026-11-10: lyrics are what makes the music page). Word fill
+ * follows the source's word times by default in this fork; only an explicit false turns it off.
  */
 export const DEFAULT_LYRICS_SETTINGS: LyricsSettingValues = {
   lyricsFolder: "",
   lyricsMusicFolder: "",
   lyricsOnline: true,
   lyricsChinese: true,
-  lyricWordFill: false,
+  lyricWordFill: true,
   lyricsOffsetMs: 0,
 };
 
@@ -34,6 +35,6 @@ export function normalizeLyricsSettings(saved: Partial<Record<keyof LyricsSettin
     lyricsMusicFolder: folder,
     lyricsOnline: saved?.lyricsOnline !== false,
     lyricsChinese: saved?.lyricsChinese !== false,
-    lyricWordFill: saved?.lyricWordFill === true,
+    lyricWordFill: saved?.lyricWordFill !== false,
   };
 }
