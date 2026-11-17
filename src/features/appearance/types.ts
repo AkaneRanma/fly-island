@@ -183,6 +183,8 @@ export type IslandSettings = {
   shelfShowCount: boolean;
   /** Folder of .lrc files searched for the playing song's lyrics; empty for none. */
   lyricsFolder: string;
+  /** Folder of music: the playing file's own lyrics (a tag inside it, or a .lrc beside it) are read from it. */
+  lyricsMusicFolder: string;
   /** Lyrics not in the folder are looked up on LRCLIB. */
   lyricsOnline: boolean;
   /** With online lyrics, also ask Kugou and NetEase (unofficial sources). */

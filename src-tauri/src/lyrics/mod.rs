@@ -1,18 +1,21 @@
 //! Synced lyrics for the music page. Windows' media session gives the playing track's title,
 //! artist, album and duration but no lyrics, so they are looked up: first in a folder of .lrc
-//! files the user keeps (local.rs), then, only when the user turned online lyrics on, on LRCLIB
-//! (lrclib.rs) and, when the user also turned Chinese sources on, on Kugou (kugou.rs) and
-//! NetEase (netease.rs), which are unofficial. Online answers, and "not found", are cached in
+//! files the user keeps (local.rs), then in the audio file itself (library.rs finds the file by
+//! name, tagged.rs reads the lyrics tagged into it or written beside it), and, only when the user
+//! turned online lyrics on, on LRCLIB (lrclib.rs) and, when the user also turned Chinese sources
+//! on, on Kugou (kugou.rs) and NetEase (netease.rs), which are unofficial. Online answers, and "not found", are cached in
 //! `lyrics-cache/` in the app data folder, so a track is asked for once. The text is returned as
 //! LRC, with the translation as a second LRC when the source has one; the island parses both.
 
 mod found;
 mod krc;
 mod kugou;
+mod library;
 mod local;
 mod lrclib;
 mod matching;
 mod netease;
+mod tagged;
 
 use std::{
     fs,
@@ -46,6 +49,10 @@ pub struct LyricsQuery {
     /// The user's folder of .lrc files; empty when none is set.
     #[serde(default)]
     folder: String,
+    /// The user's music folder, searched for the playing file so the lyrics tagged into it can be
+    /// read; empty when none is set.
+    #[serde(default)]
+    music_folder: String,
     /// Whether LRCLIB may be asked.
     #[serde(default)]
     online: bool,
@@ -60,7 +67,7 @@ pub struct LyricsQuery {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Lyrics {
-    /// "local", "lrclib", "kugou" or "netease".
+    /// "local", "file", "lrclib", "kugou" or "netease".
     source: &'static str,
     /// Synced lyrics in LRC format.
     lrc: String,
@@ -237,6 +244,19 @@ pub async fn get_lyrics(app: AppHandle, query: LyricsQuery) -> Result<Option<Lyr
             return Ok(Some(for_display("local", FoundLyrics { lrc, translation: None, duration_ms: None }, &query.title, &query.artist)));
         }
     }
+    let music_folder = query.music_folder.trim().to_string();
+    if !music_folder.is_empty() {
+        let (title, artist) = (query.title.clone(), query.artist.clone());
+        let found = tauri::async_runtime::spawn_blocking(move || {
+            let path = library::find(Path::new(&music_folder), &title, &artist)?;
+            tagged::lyrics_of(&path)
+        })
+        .await
+        .map_err(|error| format!("Failed to join the music folder search: {error}"))?;
+        if let Some(lrc) = found {
+            return Ok(Some(for_display("file", FoundLyrics { lrc, translation: None, duration_ms: None }, &query.title, &query.artist)));
+        }
+    }
     if !query.online {
         return Ok(None);
     }
@@ -318,6 +338,7 @@ mod tests {
             album: String::new(),
             duration_ms: 0,
             folder: String::new(),
+            music_folder: String::new(),
             online: true,
             chinese,
             track_id: track_id.map(Into::into),

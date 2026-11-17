@@ -45,22 +45,6 @@
   animation: lyrics-line-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-/* Each word of a line timed word by word: the bright half of a double-width gradient slides
-   in behind the text over the word's time (LyricsView sets the delay and duration). */
-.lyrics-view__word {
-  color: transparent;
-  background: linear-gradient(90deg, var(--text-1) 50%, var(--text-3) 50%) 100% 0 / 200% 100% no-repeat;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: lyrics-word-fill linear both;
-}
-
-@keyframes lyrics-word-fill {
-  to {
-    background-position: 0 0;
-  }
-}
-
 /* A new line rises into place from where the next line was. */
 @keyframes lyrics-line-in {
   from {
@@ -72,11 +56,6 @@
 @media (prefers-reduced-motion: reduce) {
   .lyrics-view__line--current {
     animation: none;
-  }
-
-  /* The word still lights when it is sung, all at once instead of filling. */
-  .lyrics-view__word {
-    animation-timing-function: step-start;
   }
 }
 

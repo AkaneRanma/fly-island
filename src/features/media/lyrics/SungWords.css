@@ -1,0 +1,23 @@
+/* Each word of a line timed word by word: the bright half of a double-width gradient slides in
+   behind the text over the word's time (SungWords sets the delay and duration). The colours come
+   from the caller, so the same line reads right on the music page and on the collapsed island. */
+.sung-word {
+  color: transparent;
+  background: linear-gradient(90deg, var(--sung-word-on, var(--text-1)) 50%, var(--sung-word-off, var(--text-3)) 50%) 100% 0 / 200% 100% no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: sung-word-fill linear both;
+}
+
+@keyframes sung-word-fill {
+  to {
+    background-position: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The word still lights when it is sung, all at once instead of filling. */
+  .sung-word {
+    animation-timing-function: step-start;
+  }
+}

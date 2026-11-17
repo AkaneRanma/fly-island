@@ -58,7 +58,7 @@ const fixture = document.getElementById("fixture")!;
 const results = document.getElementById("results")!;
 const messages: string[] = [];
 const root = createRoot(fixture);
-const ONLINE = { lyricsFolder: "", lyricsOnline: true, lyricsOffsetMs: 0 };
+const ONLINE = { lyricsFolder: "", lyricsMusicFolder: "", lyricsOnline: true, lyricsOffsetMs: 0 };
 let settingsOpened = 0;
 const seeks: number[] = [];
 const calibrations: number[] = [];
@@ -155,7 +155,7 @@ if (new URLSearchParams(location.search).get("view") === "diagnostic") {
   settingsOpened = 0;
   await act(async () => hint()!.click());
   check(settingsOpened === 1, "点提示打开音乐设置");
-  await render(track("稻香", 6000), { lyricsFolder: "", lyricsOnline: false, lyricsOffsetMs: 0 });
+  await render(track("稻香", 6000), { lyricsFolder: "", lyricsMusicFolder: "", lyricsOnline: false, lyricsOffsetMs: 0 });
   check(!view() && queries.length === before + 1, "没设歌词文件夹也没开在线查找时不去查");
   check(!hint(), "没开在线查找时不提示");
   await render(track("七里香", 6000), { ...ONLINE, lyricsChinese: true } as typeof ONLINE);
@@ -180,7 +180,7 @@ if (new URLSearchParams(location.search).get("view") === "diagnostic") {
 
   // Word-timed lines (Kugou KRC, enhanced LRC) fill word by word.
   await render(track("Believe", 1500));
-  const words = () => [...document.querySelectorAll<HTMLElement>(".lyrics-view__word")];
+  const words = () => [...document.querySelectorAll<HTMLElement>(".sung-word")];
   const fillX = (word: HTMLElement) => getComputedStyle(word).backgroundPosition.split(" ")[0];
   check(words().map((word) => word.textContent).join("|") === "Oh |I |believe" && lines()[1] === "Oh I believe" && lines()[2] === "in yesterday",
     "逐字时间的歌词按字分开，整句文字不变");

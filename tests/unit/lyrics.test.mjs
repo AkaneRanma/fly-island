@@ -39,14 +39,17 @@ test("a track is looked up once, whatever small differences in its reported leng
   assert.equal(trackKey({ title: null, artist: null, durationMs: 0 }), null);
 });
 
-test("lyrics are looked up online unless turned off; the folder and global offset are no longer read back", () => {
+test("lyrics are looked up online unless turned off; the music folder is kept and trimmed; the .lrc folder and offset are no longer read back", () => {
   const settings = normalizeSettings({});
   assert.equal(settings.lyricsOnline, true);
   assert.equal(normalizeSettings({ lyricsOnline: false }).lyricsOnline, false);
   assert.equal(settings.lyricsFolder, "");
+  assert.equal(settings.lyricsMusicFolder, "");
   assert.equal(normalizeSettings({ lyricsOnline: true, lyricsChinese: true }).lyricsChinese, true);
   assert.equal(normalizeSettings({ lyricsOffsetMs: -1200 }).lyricsOffsetMs, 0);
   assert.equal(normalizeSettings({ lyricsFolder: " D:\\Lyrics " }).lyricsFolder, "");
+  assert.equal(normalizeSettings({ lyricsMusicFolder: " D:\\Music " }).lyricsMusicFolder, "D:\\Music");
+  assert.equal(normalizeSettings({ lyricsMusicFolder: 7 }).lyricsMusicFolder, "");
 });
 
 test("enhanced LRC word times become the line's words", () => {

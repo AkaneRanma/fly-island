@@ -11,6 +11,13 @@
   white-space: nowrap;
 }
 
+/* Word-by-word lyrics: the line keeps the island's text colour, and the words still to be sung
+   are dimmer, so the bright edge moves along it. */
+.collapsed-lyric .sung-word {
+  --sung-word-on: var(--task-text-color);
+  --sung-word-off: color-mix(in srgb, var(--task-text-color) 40%, transparent);
+}
+
 /* The song's cover beside it, when Appearance → Collapsed island asks for it. */
 .collapsed-cover {
   width: 22px;

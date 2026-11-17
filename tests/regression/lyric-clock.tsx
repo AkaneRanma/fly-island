@@ -16,12 +16,15 @@ const anchor = now;
 let finish: ((value: unknown) => void) | undefined;
 const calls: string[] = [];
 const lrc = "[00:01.00]first\n[00:05.00]second\n[00:09.00]third";
+// A line whose source times each word (enhanced LRC), for the word-by-word view.
+const wordedLrc = "[00:59.00]<00:59.00>one <00:59.50>two<01:00.00>";
 mockIPC((command, payload) => {
   if (command !== "get_lyrics") return null;
   const { title } = (payload as { query: { title: string } }).query;
   calls.push(title);
   if (title === "late") return new Promise((resolve) => { finish = resolve; });
   if (title === "failed") return Promise.reject(new Error("lookup failed fixture"));
+  if (title === "worded") return { lrc: wordedLrc };
   return { lrc };
 });
 async function render(title: string, active: boolean, durationMs = 0) {
@@ -29,7 +32,7 @@ async function render(title: string, active: boolean, durationMs = 0) {
     root.render(<StrictMode><CollapsedLyric active={active}
       mediaState={{ ...DEFAULT_MEDIA_STATE, title, artist: "artist", available: true, playbackStatus: "playing",
         durationMs, positionMs: 0, updatedAt: anchor }}
-      lyricsSettings={{ lyricsFolder: "", lyricsOnline: true, lyricsOffsetMs: 0 }} /></StrictMode>);
+      lyricsSettings={{ lyricsFolder: "", lyricsMusicFolder: "", lyricsOnline: true, lyricsOffsetMs: 0 }} /></StrictMode>);
   });
 }
 function check(condition: unknown, message: string) {
@@ -55,6 +58,10 @@ try {
   await render("prefetched", false);
   await render("failed", false);
   check(calls.filter((title) => title === "failed").length === 2, "失败缓存过期后可重试");
+  await render("worded", true, 60_000);
+  const words = [...document.querySelectorAll<HTMLElement>(".collapsed-lyric .sung-word")];
+  check(words.length === 2 && words.every((word) => word.style.animationDuration !== ""), "收起态逐字：源给了词时间就按词高亮");
+  check(text() === "one two", "逐字高亮时整行文字不变");
   results.dataset.result = "passed";
   results.textContent = passed.join("\n");
 } catch (error) {

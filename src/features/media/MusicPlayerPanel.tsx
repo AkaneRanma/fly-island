@@ -18,7 +18,7 @@ import { hasTimeline } from "./trackClock";
 import { useMediaDiagnostics } from "./useMediaDiagnostics";
 import { MediaNotice, MediaNoticeButton, useMediaNotice } from "./MediaNotice";
 
-const NO_LYRICS = { lyricsFolder: "", lyricsOnline: false, lyricsOffsetMs: 0 };
+const NO_LYRICS = { lyricsFolder: "", lyricsMusicFolder: "", lyricsOnline: false, lyricsOffsetMs: 0 };
 
 type MusicPlayerPanelProps = {
   mediaState: MediaState;

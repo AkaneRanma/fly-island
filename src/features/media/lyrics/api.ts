@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 /** Mirrors Lyrics in src-tauri/src/lyrics/mod.rs. */
 export type Lyrics = {
-  source: "local" | "lrclib" | "kugou" | "netease";
+  source: "local" | "file" | "lrclib" | "kugou" | "netease";
   lrc: string;
   /** The translation of the same lines, in LRC, when the source has one. */
   translation?: string | null;
@@ -17,6 +17,8 @@ export type LyricsQuery = {
   durationMs: number;
   /** The user's folder of .lrc files; empty when none. */
   folder: string;
+  /** The user's music folder, read for the lyrics the playing file carries; empty when none. */
+  musicFolder: string;
   /** Whether LRCLIB may be asked. */
   online: boolean;
   /** Whether Kugou and NetEase may be asked too (unofficial; only with `online`). */

@@ -3,7 +3,7 @@ import type { MediaState } from "../api";
 import { getLyrics } from "./api";
 import { parseLrc, trackKey, withTranslations, type LyricLine } from "./lrc";
 
-export type LyricsSettings = { lyricsFolder: string; lyricsOnline: boolean; lyricsChinese?: boolean };
+export type LyricsSettings = { lyricsFolder: string; lyricsMusicFolder: string; lyricsOnline: boolean; lyricsChinese?: boolean };
 
 type Found = { lookup: string; lines: LyricLine[]; durationMs: number; expiresAt: number };
 // The last few lookups' answers. The music page mounts again on every visit; without these its
@@ -31,12 +31,13 @@ export function useLyrics(
 ): { lines: LyricLine[] | null; notFound: boolean; durationMs: number } {
   const key = trackKey(mediaState);
   const folder = settings.lyricsFolder.trim();
-  const active = Boolean(key) && (folder !== "" || settings.lyricsOnline);
+  const musicFolder = settings.lyricsMusicFolder.trim();
+  const active = Boolean(key) && (folder !== "" || musicFolder !== "" || settings.lyricsOnline);
   const [found, setFound] = useState<Found | null>(null);
   // Read when the track changes, not on every poll that moves the position.
   const { title, artist, album, durationMs, trackId } = mediaState;
   const chinese = settings.lyricsOnline && settings.lyricsChinese === true;
-  const lookup = [key, folder, settings.lyricsOnline, chinese].join("\u001f");
+  const lookup = [key, folder, musicFolder, settings.lyricsOnline, chinese].join("\u001f");
 
   useEffect(() => {
     if (!active || !key || !title) return;
@@ -45,7 +46,7 @@ export function useLyrics(
     let cancelled = false;
     let request = pending.get(lookup);
     if (!request) {
-      request = getLyrics({ title, artist: artist ?? "", album: album ?? "", durationMs, folder, online: settings.lyricsOnline, chinese, trackId: trackId ?? null })
+      request = getLyrics({ title, artist: artist ?? "", album: album ?? "", durationMs, folder, musicFolder, online: settings.lyricsOnline, chinese, trackId: trackId ?? null })
       .then((lyrics) => {
         const parsed = lyrics ? parseLrc(lyrics.lrc).filter((line, index, all) => line.text || index < all.length - 1) : [];
         const lines = withTranslations(parsed, lyrics?.translation ? parseLrc(lyrics.translation) : []);
@@ -69,7 +70,7 @@ export function useLyrics(
     };
     // Duration/album refine the request, but late metadata must not restart the same lookup.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, key, folder, settings.lyricsOnline, chinese]);
+  }, [active, key, folder, musicFolder, settings.lyricsOnline, chinese]);
 
   const current = recent.get(lookup) ?? (found?.lookup === lookup ? found : null);
   if (!active || !current) return { lines: null, notFound: false, durationMs: 0 };

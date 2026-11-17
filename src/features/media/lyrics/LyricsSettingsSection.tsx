@@ -1,11 +1,14 @@
 import { SettingsGroup } from "../../../components/settings/SettingsGroup";
+import { SettingsInput } from "../../../components/settings/SettingsInput";
+import { SettingsRow } from "../../../components/settings/SettingsRow";
 import { SettingsToggleRow } from "../../../components/settings/SettingsToggleRow";
 import type { IslandSettings } from "../../appearance/types";
 import { useTranslation } from "../../../i18n";
 
 /**
- * Settings → Music → Lyrics: looking lyrics up online, and the Chinese sources with them. Timing
- * is fixed per song on the music page itself (LyricsOffsetControl).
+ * Settings → Music → Lyrics: the music folder whose songs are asked for the lyrics they carry
+ * themselves, looking lyrics up online, and the Chinese sources with them. Timing is fixed per song
+ * on the music page itself (LyricsOffsetControl).
  */
 export function LyricsSettingsSection({
   settings,
@@ -18,6 +21,19 @@ export function LyricsSettingsSection({
 
   return (
     <SettingsGroup title={text.title} footer={text.hint}>
+      <SettingsRow title={text.musicFolder} description={text.musicFolderHint}>
+        <SettingsInput
+          monospace
+          autoComplete="off"
+          aria-label={text.musicFolder}
+          value={settings.lyricsMusicFolder}
+          placeholder={text.musicFolderPlaceholder}
+          onChange={(event) => {
+            const lyricsMusicFolder = event.currentTarget.value;
+            onSettingsChange({ ...settings, lyricsMusicFolder });
+          }}
+        />
+      </SettingsRow>
       <SettingsToggleRow
         title={text.online}
         description={text.onlineHint}

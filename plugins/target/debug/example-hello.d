@@ -1,0 +1,1 @@
+E:\workplace\fly-island-src\plugins\target\debug\example-hello.exe: E:\workplace\fly-island-src\plugins\example-hello\src\main.rs E:\workplace\fly-island-src\plugins\sdk\src\credentials.rs E:\workplace\fly-island-src\plugins\sdk\src\lib.rs
